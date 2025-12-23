@@ -1,0 +1,130 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { showNotify } from 'vant'
+import { useAuth } from '../composables/useAuth'
+
+const { login, error } = useAuth()
+
+const username = ref('')
+const password = ref('')
+const isLoading = ref(false)
+
+async function handleLogin() {
+  if (!username.value || !password.value) {
+    showNotify({
+      type: 'warning',
+      message: 'Please enter username and password',
+    })
+    return
+  }
+
+  isLoading.value = true
+
+  try {
+    const success = await login(username.value, password.value)
+
+    if (success) {
+      showNotify({
+        type: 'success',
+        message: 'Login successful',
+      })
+    } else {
+      showNotify({
+        type: 'danger',
+        message: error.value || 'Login failed',
+      })
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <h1>WOTA Spotter</h1>
+        <p>Please log in to continue</p>
+      </div>
+
+      <van-form @submit="handleLogin">
+        <van-cell-group inset>
+          <van-field
+            v-model="username"
+            name="username"
+            label="Username"
+            placeholder="Enter username"
+            :rules="[{ required: true, message: 'Username is required' }]"
+            autocomplete="username"
+          />
+
+          <van-field
+            v-model="password"
+            type="password"
+            name="password"
+            label="Password"
+            placeholder="Enter password"
+            :rules="[{ required: true, message: 'Password is required' }]"
+            autocomplete="current-password"
+          />
+        </van-cell-group>
+
+        <div class="login-button-wrapper">
+          <van-button
+            round
+            block
+            type="primary"
+            native-type="submit"
+            :loading="isLoading"
+          >
+            Log In
+          </van-button>
+        </div>
+      </van-form>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 16px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: white;
+  border-radius: 16px;
+  padding: 32px 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-header h1 {
+  margin: 0 0 8px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #333;
+}
+
+.login-header p {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.login-button-wrapper {
+  margin-top: 24px;
+  padding: 0 16px;
+}
+</style>
