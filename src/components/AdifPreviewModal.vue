@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue'
-import {showNotify} from 'vant'
+import {showNotify, showDialog} from 'vant'
 import type {AdifRecord, ParsedAdif, Summit} from '../types/adif'
 import {extractWotaId} from '../services/adifService'
 import {formatWotaReference, parseWotaReference} from '../utils/wotaReference'
@@ -20,6 +20,7 @@ const isImporting = ref(false)
 const activeErrorPanel = ref<string[]>([])
 const editableRecords = ref<Map<number, string>>(new Map())
 const duplicateFlags = ref<boolean[]>([])
+const possibleDuplicateFlags = ref<boolean[]>([])
 
 // Autocomplete state
 const summits = ref<Summit[]>([])
@@ -87,6 +88,10 @@ const duplicateCount = computed(() => {
   return duplicateFlags.value.filter(d => d).length
 })
 
+const possibleDuplicateCount = computed(() => {
+  return possibleDuplicateFlags.value.filter(d => d).length
+})
+
 function formatDate(adifDate?: string): string {
   if (!adifDate) return '-'
   const year = adifDate.substring(0, 4)
@@ -108,7 +113,8 @@ function getSummit(record: AdifRecord, index: number): string {
   const edited = editableRecords.value.get(index)
   if (edited) return edited
 
-  const sigInfo = record.sig_info || record.my_sig_info
+  // IMPORTANT: my_sig_info is the activator's summit, sig_info is the contacted station's summit (S2S)
+  const sigInfo = record.my_sig_info || record.sig_info
   if (!sigInfo) return ''
 
   // First try to parse as a formatted WOTA reference (e.g., "LDO-093")
@@ -151,12 +157,14 @@ function getFormattedWotaReference(record: AdifRecord, index: number): string {
 
 function hasSummit(record: AdifRecord): boolean {
   // Only check the ORIGINAL record data, not edited values
-  const id = extractWotaId(record.sig_info || record.my_sig_info)
+  // my_sig_info is the activator's summit, sig_info is the contacted station's summit (S2S)
+  const id = extractWotaId(record.my_sig_info || record.sig_info)
   return id !== null
 }
 
 function hasOriginalSummit(record: AdifRecord): boolean {
-  const id = extractWotaId(record.sig_info || record.my_sig_info)
+  // my_sig_info is the activator's summit, sig_info is the contacted station's summit (S2S)
+  const id = extractWotaId(record.my_sig_info || record.sig_info)
   return id !== null
 }
 
@@ -171,7 +179,23 @@ function handleClose() {
   emit('close')
 }
 
-function handleConfirm() {
+async function handleConfirm() {
+  // Check for possible duplicates and show warning dialog
+  if (possibleDuplicateCount.value > 0) {
+    try {
+      await showDialog({
+        title: 'Possible Duplicates Detected',
+        message: `${possibleDuplicateCount.value} record${possibleDuplicateCount.value !== 1 ? 's' : ''} may be duplicate${possibleDuplicateCount.value !== 1 ? 's' : ''} of existing records that have no band/mode information. Do you want to proceed with the import?`,
+        showCancelButton: true,
+        confirmButtonText: 'Import Anyway',
+        cancelButtonText: 'Cancel',
+      })
+    } catch (error) {
+      // User clicked cancel
+      return
+    }
+  }
+
   // Update parsedData with manually entered WOTA references
   if (props.parsedData) {
     editableRecords.value.forEach((wotaId, index) => {
@@ -213,6 +237,7 @@ async function loadSummits() {
 async function checkDuplicates() {
   if (!props.parsedData || props.parsedData.records.length === 0) {
     duplicateFlags.value = []
+    possibleDuplicateFlags.value = []
     return
   }
 
@@ -237,20 +262,37 @@ async function checkDuplicates() {
     const response = await apiClient.checkDuplicates(transformedRecords)
 
     // Map duplicate flags back to original record indices
-    const flags = new Array(props.parsedData.records.length).fill(false)
+    const dupFlags = new Array(props.parsedData.records.length).fill(false)
+    const possDupFlags = new Array(props.parsedData.records.length).fill(false)
+
     response.duplicates.forEach((isDuplicate, transformedIndex) => {
       const originalIndex = indexMapping[transformedIndex]
-      flags[originalIndex] = isDuplicate
+      dupFlags[originalIndex] = isDuplicate
     })
 
-    duplicateFlags.value = flags
-    const duplicateCount = flags.filter(d => d).length
-    if (duplicateCount > 0) {
-      console.log(`Found ${duplicateCount} duplicate record(s)`)
+    if (response.possibleDuplicates) {
+      response.possibleDuplicates.forEach((isPossibleDuplicate, transformedIndex) => {
+        const originalIndex = indexMapping[transformedIndex]
+        possDupFlags[originalIndex] = isPossibleDuplicate
+      })
+    }
+
+    duplicateFlags.value = dupFlags
+    possibleDuplicateFlags.value = possDupFlags
+
+    const dupCount = dupFlags.filter(d => d).length
+    const possDupCount = possDupFlags.filter(d => d).length
+
+    if (dupCount > 0) {
+      console.log(`Found ${dupCount} duplicate record(s)`)
+    }
+    if (possDupCount > 0) {
+      console.log(`Found ${possDupCount} possible duplicate record(s)`)
     }
   } catch (error) {
     console.error('Failed to check for duplicates:', error)
     duplicateFlags.value = []
+    possibleDuplicateFlags.value = []
   }
 }
 
@@ -369,6 +411,33 @@ function getSummitName(record: AdifRecord, index: number): string {
   }
   return summit?.name || '-'
 }
+
+// Get S2S reference (the contacted station's summit)
+function getS2sReference(record: AdifRecord): string {
+  if (!record.sig_info) return '-'
+
+  // Try to parse and format as WOTA reference
+  const wotaId = parseWotaReference(record.sig_info)
+  if (wotaId !== null) {
+    return formatWotaReference(wotaId)
+  }
+
+  // Return the raw reference if it can't be parsed as WOTA
+  return record.sig_info
+}
+
+// Get S2S summit name
+function getS2sSummitName(record: AdifRecord): string {
+  if (!record.sig_info) return ''
+
+  // Try to parse as WOTA reference
+  const wotaId = parseWotaReference(record.sig_info)
+  if (wotaId === null) return ''
+
+  // Look up summit name
+  const summit = summits.value.find(s => s.wotaid === wotaId)
+  return summit?.name || ''
+}
 </script>
 
 <template>
@@ -412,10 +481,10 @@ function getSummitName(record: AdifRecord, index: number): string {
               <th>Time</th>
               <th>Call</th>
               <th>WOTA Ref</th>
-              <th>Summit</th>
               <th>Band</th>
               <th>Freq</th>
               <th>Mode</th>
+              <th>S2S</th>
             </tr>
           </thead>
           <tbody>
@@ -424,7 +493,8 @@ function getSummitName(record: AdifRecord, index: number): string {
               :key="index"
               :class="{
                 'missing-summit': !hasSummit(record),
-                'duplicate-record': duplicateFlags[index]
+                'duplicate-record': duplicateFlags[index],
+                'possible-duplicate-record': possibleDuplicateFlags[index] && !duplicateFlags[index]
               }"
             >
               <td>{{ formatDate(record.qso_date) }}</td>
@@ -432,6 +502,7 @@ function getSummitName(record: AdifRecord, index: number): string {
               <td>
                 {{ record.call || '-' }}
                 <span v-if="duplicateFlags[index]" class="duplicate-indicator" title="Duplicate record already exists in database">DUP</span>
+                <span v-else-if="possibleDuplicateFlags[index]" class="possible-duplicate-indicator" title="Possible duplicate - database record has no band/mode">?</span>
               </td>
               <td class="summit-cell">
                 <div class="summit-input-wrapper">
@@ -477,11 +548,15 @@ function getSummitName(record: AdifRecord, index: number): string {
                     <span v-if="isConvertedFromSota(record)" class="sota-indicator" title="Auto-converted from SOTA">SOTA</span>
                   </span>
                 </div>
+                <div class="summit-name">{{ getSummitName(record, index) }}</div>
               </td>
-              <td class="summit-name-cell">{{ getSummitName(record, index) }}</td>
               <td>{{ record.band || '-' }}</td>
               <td>{{ record.freq || '-' }}</td>
               <td>{{ record.mode || '-' }}</td>
+              <td class="s2s-cell">
+                <div class="s2s-reference">{{ getS2sReference(record) }}</div>
+                <div v-if="getS2sSummitName(record)" class="summit-name">{{ getS2sSummitName(record) }}</div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -492,7 +567,7 @@ function getSummitName(record: AdifRecord, index: number): string {
       </div>
 
       <!-- Import warnings -->
-      <div v-if="recordsWithoutSummit > 0 || duplicateCount > 0" class="import-warnings">
+      <div v-if="recordsWithoutSummit > 0 || duplicateCount > 0 || possibleDuplicateCount > 0" class="import-warnings">
         <div v-if="recordsWithoutSummit > 0" class="warning-item missing-warning">
           <van-icon name="warning-o" />
           <span>{{ recordsWithoutSummit }} record{{ recordsWithoutSummit !== 1 ? 's' : '' }} without valid WOTA reference will be skipped</span>
@@ -500,6 +575,10 @@ function getSummitName(record: AdifRecord, index: number): string {
         <div v-if="duplicateCount > 0" class="warning-item duplicate-warning">
           <van-icon name="warning-o" />
           <span>{{ duplicateCount }} duplicate record{{ duplicateCount !== 1 ? 's' : '' }} will be skipped</span>
+        </div>
+        <div v-if="possibleDuplicateCount > 0" class="warning-item possible-duplicate-warning">
+          <van-icon name="info-o" />
+          <span>{{ possibleDuplicateCount }} possible duplicate{{ possibleDuplicateCount !== 1 ? 's' : '' }} (database has no band/mode)</span>
         </div>
       </div>
 
@@ -607,11 +686,19 @@ function getSummitName(record: AdifRecord, index: number): string {
   position: relative;
 }
 
-.summit-name-cell {
-  min-width: 120px;
-  max-width: 200px;
+.summit-name {
   color: #666;
-  font-size: 12px;
+  font-size: 11px;
+  margin-top: 2px;
+  font-style: italic;
+}
+
+.s2s-cell {
+  min-width: 120px;
+}
+
+.s2s-reference {
+  font-weight: 500;
 }
 
 .summit-input-wrapper {

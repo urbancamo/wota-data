@@ -1,8 +1,25 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { parseCsvContent, calculateStatistics } from '../src/services/csvService'
 import { mapToActivatorLog } from '../src/services/adifService'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+
+// Mock the API client
+vi.mock('../src/services/api', () => ({
+  apiClient: {
+    lookupSotaReference: vi.fn(async (sotaRef: string) => {
+      // Mock database lookups for SOTA references
+      const sotaToWotaMap: Record<string, { wotaid: number; name: string } | null> = {
+        'G/LD-056': { wotaid: 323, name: 'Whitbarrow' },
+        'G/LD-018': { wotaid: 232, name: 'High Street' },
+        'LA/OS-001': null, // Norwegian SOTA, not WOTA
+        'SP/BZ-084': null, // Polish SOTA, not WOTA
+      }
+
+      return sotaToWotaMap[sotaRef] || null
+    }),
+  },
+}))
 
 describe('CSV Import', () => {
   const csvFilename = '2025-11-26-School-Knott-Hagg-End-WOTA-IMPORT.csv'
@@ -219,5 +236,26 @@ describe('CSV Import', () => {
     expect(first.band).toBe('20m')
     expect(first.mode).toBe('SSB')
     expect(first.s2s).toBe(false)  // No S2S WOTA reference
+  })
+
+  it('should correctly separate activator and S2S summit references', async () => {
+    const csvPath = join(__dirname, 'fixtures/csv/2020-09-19-Loft-Crag-WOTA.csv')
+    const csvContent = readFileSync(csvPath, 'utf-8')
+
+    const parsed = await parseCsvContent(csvContent)
+
+    // Last record is M1BUU/P on G/LD-018 (S2S contact)
+    const lastRecord = parsed.records[parsed.records.length - 1]
+
+    // Activator's summit should be in my_sig_info
+    expect(lastRecord.my_sig_info).toBe('LDW-097')
+    expect(lastRecord.my_sig).toBe('WOTA')
+
+    // S2S summit should be converted from G/LD-018 to LDO-018 (wotaid 232 = 18 + 214)
+    expect(lastRecord.sig_info).toBe('LDO-018')
+    expect(lastRecord.sig).toBe('WOTA')
+
+    // Station call should be correct
+    expect(lastRecord.call).toBe('M1BUU/P')
   })
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { showNotify, showLoadingToast, closeToast, showDialog } from 'vant'
+import { showNotify, showLoadingToast, closeToast, showDialog, showActionSheet, type ActionSheetAction } from 'vant'
 import AuthGuard from './components/AuthGuard.vue'
 import LogoutButton from './components/LogoutButton.vue'
 import ButtonBar from './components/ButtonBar.vue'
@@ -13,6 +13,36 @@ import { apiClient } from './services/api'
 import type { ParsedAdif, ImportStatistics } from './types/adif'
 
 const activeView = ref(0)
+const buttonBarRef = ref<InstanceType<typeof ButtonBar> | null>(null)
+const showActions = ref(false)
+
+const actions: ActionSheetAction[] = [
+  { name: 'Import ADIF', subname: 'Import contacts from ADIF file' },
+  { name: 'Import CSV', subname: 'Import contacts from CSV file' },
+  { name: 'Export Activator CSV', subname: 'Export activator contacts' },
+  { name: 'Export Chaser CSV', subname: 'Export chaser contacts' },
+]
+
+function handleActionSelect(action: ActionSheetAction, index: number) {
+  showActions.value = false
+
+  if (!buttonBarRef.value) return
+
+  switch (index) {
+    case 0:
+      buttonBarRef.value.handleImportAdifClick()
+      break
+    case 1:
+      buttonBarRef.value.handleImportCsvClick()
+      break
+    case 2:
+      buttonBarRef.value.handleExportActivatorClick()
+      break
+    case 3:
+      buttonBarRef.value.handleExportChaserClick()
+      break
+  }
+}
 
 const showPreview = ref(false)
 const parsedData = ref<ParsedAdif | null>(null)
@@ -108,17 +138,30 @@ async function handleConfirmImport() {
         fixed
         placeholder
       >
+        <template #left>
+          <van-button
+            size="small"
+            type="primary"
+            @click="showActions = true"
+          >
+            Actions
+          </van-button>
+        </template>
         <template #right>
           <LogoutButton />
         </template>
       </van-nav-bar>
 
-      <!-- Button Bar -->
-      <ButtonBar @adif-parsed="handleAdifParsed" />
+      <!-- Hidden Button Bar (keeps functionality) -->
+      <ButtonBar
+        ref="buttonBarRef"
+        style="display: none"
+        @adif-parsed="handleAdifParsed"
+      />
 
       <!-- Page Content -->
       <div class="page-content">
-        <van-tabs v-model:active="activeView" sticky :offset-top="119">
+        <van-tabs v-model:active="activeView" sticky :offset-top="46">
           <van-tab title="Statistics">
             <div class="statistics-container">
               <StatisticsPanel />
@@ -143,6 +186,15 @@ async function handleConfirmImport() {
         @close="handlePreviewClose"
         @confirm="handleConfirmImport"
       />
+
+      <!-- Actions Menu -->
+      <van-action-sheet
+        v-model:show="showActions"
+        :actions="actions"
+        cancel-text="Cancel"
+        close-on-click-action
+        @select="handleActionSelect"
+      />
     </div>
   </AuthGuard>
 </template>
@@ -154,7 +206,7 @@ async function handleConfirmImport() {
 
 .page-content {
   min-height: 100vh;
-  padding-top: 119px;
+  padding-top: 46px;
 }
 
 .statistics-container {
@@ -166,10 +218,6 @@ async function handleConfirmImport() {
 @media (max-width: 768px) {
   .statistics-container {
     grid-template-columns: 1fr;
-  }
-
-  .page-content {
-    padding-top: 190px;
   }
 }
 </style>

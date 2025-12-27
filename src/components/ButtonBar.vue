@@ -200,6 +200,14 @@ async function handleFilterConfirm(filters: ExportFilters) {
     closeToast()
   }
 }
+
+// Expose methods for parent component
+defineExpose({
+  handleImportAdifClick,
+  handleImportCsvClick,
+  handleExportActivatorClick,
+  handleExportChaserClick,
+})
 </script>
 
 <template>

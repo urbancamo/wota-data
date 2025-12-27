@@ -102,7 +102,7 @@ export async function parseCsvContent(content: string): Promise<ParsedAdif> {
       record.s2sReference.toUpperCase().startsWith('LDW') ||
       record.s2sReference.toUpperCase().startsWith('LDO') ? 'WOTA' : 'SOTA'
     ) : undefined,
-    freq: parseFrequency(record.frequency),
+    // Frequency is only used to determine band, not stored in database
     band: frequencyToBand(record.frequency),
     mode: record.mode,
   }))
@@ -144,6 +144,13 @@ async function convertS2sSotaToWota(records: CsvRecord[]): Promise<void> {
     // Convert S2S SOTA reference (station worked's summit) to WOTA
     if (record.s2sReference) {
       const ref = record.s2sReference.toUpperCase()
+
+      // If it's already a WOTA reference, keep it as-is
+      if (ref.startsWith('LDW-') || ref.startsWith('LDO-')) {
+        continue
+      }
+
+      // If it's a G/LD SOTA reference, try to convert to WOTA
       if (ref.startsWith('G/LD-')) {
         try {
           console.log(`Looking up S2S SOTA reference: ${record.s2sReference}`)
@@ -164,6 +171,11 @@ async function convertS2sSotaToWota(records: CsvRecord[]): Promise<void> {
         } catch (error) {
           console.error(`Error looking up S2S SOTA reference ${record.s2sReference}:`, error)
         }
+      } else if (ref.match(/^[A-Z0-9]+\/[A-Z0-9]+-\d+$/)) {
+        // It's a non-G/LD SOTA reference (e.g., LA/OS-001, SP/BZ-084)
+        // These are not WOTA summits, so clear the s2sReference
+        console.log(`S2S SOTA reference ${record.s2sReference} is not a Lake District summit - clearing s2sReference`)
+        record.s2sReference = undefined
       }
     }
   }
@@ -229,13 +241,14 @@ function frequencyToBand(freqStr: string): string {
   }
 
   // Map frequency to band
+  // Note: Some ranges are extended to handle common shorthand notations (e.g., "18MHz" for 17m band)
   if (freqMhz >= 1.8 && freqMhz <= 2.0) return '160m'
   if (freqMhz >= 3.5 && freqMhz <= 4.0) return '80m'
   if (freqMhz >= 5.3 && freqMhz <= 5.4) return '60m'
   if (freqMhz >= 7.0 && freqMhz <= 7.3) return '40m'
   if (freqMhz >= 10.1 && freqMhz <= 10.15) return '30m'
   if (freqMhz >= 14.0 && freqMhz <= 14.35) return '20m'
-  if (freqMhz >= 18.068 && freqMhz <= 18.168) return '17m'
+  if (freqMhz >= 18.0 && freqMhz <= 18.2) return '17m'  // Extended to include "18MHz" shorthand
   if (freqMhz >= 21.0 && freqMhz <= 21.45) return '15m'
   if (freqMhz >= 24.89 && freqMhz <= 24.99) return '12m'
   if (freqMhz >= 28.0 && freqMhz <= 29.7) return '10m'

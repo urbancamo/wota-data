@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { showNotify } from 'vant'
 import { apiClient } from '../services/api'
 import { formatWotaReference } from '../utils/wotaReference'
@@ -13,18 +13,82 @@ const loading = ref(false)
 const currentPage = ref(1)
 const totalPages = ref(1)
 const totalRecords = ref(0)
-const pageSize = 25
+const pageSize = ref(20)
+const availableYears = ref<number[]>([])
+const selectedYear = ref<number | null>(null)
+const sortOrder = ref<'asc' | 'desc'>('desc')
+const containerRef = ref<HTMLElement | null>(null)
+const filterSectionRef = ref<HTMLElement | null>(null)
+const paginationRef = ref<HTMLElement | null>(null)
+
+// Compute dropdown options for year filter
+const yearOptions = computed(() => {
+  const options = [
+    { text: 'All Years', value: null }
+  ]
+
+  availableYears.value.forEach(year => {
+    options.push({ text: year.toString(), value: year })
+  })
+
+  return options
+})
+
+function toggleSortOrder() {
+  sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
+}
+
+function calculatePageSize() {
+  if (!containerRef.value) return
+
+  // Get viewport height
+  const viewportHeight = window.innerHeight
+
+  // Calculate heights of fixed elements
+  const filterHeight = filterSectionRef.value?.offsetHeight || 0
+  const paginationHeight = paginationRef.value?.offsetHeight || 0
+
+  // Account for: navbar (46px), tabs (44px), contacts-view padding-top (8px),
+  // container padding (32px total), table header (~30px), and some buffer (10px)
+  const fixedHeights = 46 + 44 + 8 + 32 + 30 + 10 + filterHeight + paginationHeight
+
+  // Calculate available height for table body
+  const availableHeight = viewportHeight - fixedHeights
+
+  // Each row is approximately: 6px top padding + 6px bottom padding + ~20px content = ~32px
+  const rowHeight = 32
+
+  // Calculate how many rows can fit (minimum 10, maximum 100)
+  const calculatedSize = Math.floor(availableHeight / rowHeight)
+  const newPageSize = Math.max(10, Math.min(100, calculatedSize))
+
+  // Only update if significantly different (avoid unnecessary reloads)
+  if (Math.abs(pageSize.value - newPageSize) > 2) {
+    pageSize.value = newPageSize
+  }
+}
+
+let resizeTimeout: number | null = null
+function handleResize() {
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout)
+  }
+  resizeTimeout = window.setTimeout(() => {
+    calculatePageSize()
+  }, 250)
+}
 
 async function loadContacts() {
   try {
     loading.value = true
     const result = props.contactType === 'activator'
-      ? await apiClient.getActivatorContacts(currentPage.value, pageSize)
-      : await apiClient.getChaserContacts(currentPage.value, pageSize)
+      ? await apiClient.getActivatorContacts(currentPage.value, pageSize.value, selectedYear.value || undefined, sortOrder.value)
+      : await apiClient.getChaserContacts(currentPage.value, pageSize.value, selectedYear.value || undefined, sortOrder.value)
 
     contacts.value = result.contacts
     totalPages.value = result.pagination.totalPages
     totalRecords.value = result.pagination.total
+    availableYears.value = result.availableYears || []
   } catch (error) {
     console.error(`Error loading ${props.contactType} contacts:`, error)
     showNotify({
@@ -41,15 +105,38 @@ watch(currentPage, () => {
   loadContacts()
 })
 
+// Watch for pageSize changes
+watch(pageSize, () => {
+  currentPage.value = 1
+  loadContacts()
+})
+
+// Watch for year filter changes
+watch(selectedYear, () => {
+  currentPage.value = 1
+  loadContacts()
+})
+
+// Watch for sort order changes
+watch(sortOrder, () => {
+  currentPage.value = 1
+  loadContacts()
+})
+
 // Reload when contact type changes
 watch(() => props.contactType, () => {
   currentPage.value = 1
+  selectedYear.value = null
+  sortOrder.value = 'desc'
   loadContacts()
 })
 
 function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return d.toLocaleDateString()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatTime(time: Date | string | null): string {
@@ -59,13 +146,29 @@ function formatTime(time: Date | string | null): string {
 }
 
 onMounted(() => {
+  // Calculate initial page size
+  setTimeout(() => {
+    calculatePageSize()
+  }, 100)
+
+  // Add resize listener
+  window.addEventListener('resize', handleResize)
+
   loadContacts()
+})
+
+onUnmounted(() => {
+  // Clean up resize listener
+  window.removeEventListener('resize', handleResize)
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout)
+  }
 })
 </script>
 
 <template>
   <div class="contacts-view">
-    <div class="contacts-container">
+    <div class="contacts-container" ref="containerRef">
       <div v-if="loading" class="loading-container">
         <van-loading type="spinner" size="24" />
         <div class="loading-text">Loading contacts...</div>
@@ -76,6 +179,25 @@ onMounted(() => {
       </div>
 
       <div v-else>
+        <div class="filter-section" ref="filterSectionRef">
+          <div v-if="availableYears.length > 0" class="filter-group">
+            <div class="filter-label">Filter by Year:</div>
+            <van-dropdown-menu>
+              <van-dropdown-item v-model="selectedYear" :options="yearOptions" />
+            </van-dropdown-menu>
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Sort Order:</div>
+            <van-button
+              size="small"
+              :icon="sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'"
+              @click="toggleSortOrder"
+            >
+              {{ sortOrder === 'desc' ? 'Newest First' : 'Oldest First' }}
+            </van-button>
+          </div>
+        </div>
+
         <div class="table-wrapper">
           <table class="contacts-table">
             <thead>
@@ -83,9 +205,11 @@ onMounted(() => {
                 <th>Date</th>
                 <th>Time</th>
                 <th>Call</th>
+                <th>WOTA Ref</th>
                 <th>Summit</th>
                 <template v-if="contactType === 'activator'">
                   <th>Band</th>
+                  <th>Freq</th>
                   <th>Mode</th>
                   <th>S2S</th>
                 </template>
@@ -96,12 +220,11 @@ onMounted(() => {
                 <td>{{ formatDate(contact.date) }}</td>
                 <td>{{ formatTime(contact.time) }}</td>
                 <td class="callsign">{{ contact.stncall }}</td>
-                <td class="summit-cell">
-                  <div class="summit-name">{{ contact.summitName || 'Unknown' }}</div>
-                  <div class="summit-ref">{{ formatWotaReference(contact.wotaid) }}</div>
-                </td>
+                <td class="wota-ref">{{ formatWotaReference(contact.wotaid) }}</td>
+                <td class="summit-name">{{ contact.summitName || 'Unknown' }}</td>
                 <template v-if="contactType === 'activator'">
                   <td>{{ contact.band || '-' }}</td>
+                  <td>{{ contact.frequency || '-' }}</td>
                   <td>{{ contact.mode || '-' }}</td>
                   <td class="s2s-cell">
                     <van-tag v-if="contact.s2s" type="success">S2S</van-tag>
@@ -113,7 +236,7 @@ onMounted(() => {
           </table>
         </div>
 
-        <div class="pagination-wrapper">
+        <div class="pagination-wrapper" ref="paginationRef">
           <div class="pagination-info">
             Showing {{ (currentPage - 1) * pageSize + 1 }}-{{ Math.min(currentPage * pageSize, totalRecords) }} of {{ totalRecords }} contacts
           </div>
@@ -155,6 +278,30 @@ onMounted(() => {
   padding: 16px;
 }
 
+.filter-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #323233;
+  white-space: nowrap;
+}
+
 .table-wrapper {
   overflow-x: auto;
   background: white;
@@ -173,7 +320,7 @@ onMounted(() => {
 }
 
 .contacts-table th {
-  padding: 12px 8px;
+  padding: 6px 8px;
   text-align: left;
   font-weight: 600;
   color: #323233;
@@ -182,7 +329,7 @@ onMounted(() => {
 }
 
 .contacts-table td {
-  padding: 12px 8px;
+  padding: 6px 8px;
   border-bottom: 1px solid #ebedf0;
   color: #646566;
 }
@@ -197,21 +344,15 @@ onMounted(() => {
   color: #323233;
 }
 
-.summit-cell {
-  min-width: 150px;
+.wota-ref {
+  font-family: monospace;
+  font-weight: 600;
+  color: #1989fa;
+  white-space: nowrap;
 }
 
 .summit-name {
-  font-weight: 500;
   color: #323233;
-  margin-bottom: 2px;
-}
-
-.summit-ref {
-  font-size: 12px;
-  color: #1989fa;
-  font-family: monospace;
-  font-weight: 600;
 }
 
 .s2s-cell {
@@ -259,17 +400,28 @@ onMounted(() => {
     padding: 8px;
   }
 
+  .filter-section {
+    padding: 8px 12px;
+    gap: 12px;
+  }
+
+  .filter-group {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filter-label {
+    font-size: 12px;
+  }
+
   .contacts-table {
     font-size: 12px;
   }
 
   .contacts-table th,
   .contacts-table td {
-    padding: 8px 4px;
-  }
-
-  .summit-cell {
-    min-width: 120px;
+    padding: 4px 4px;
   }
 
   .pagination-info {

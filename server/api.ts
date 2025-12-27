@@ -227,17 +227,24 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
 app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
   try {
     const { records } = req.body
+    const userCallsign = req.user?.username?.toUpperCase()
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
 
     if (!records || !Array.isArray(records)) {
       return res.status(400).json({ error: 'Invalid request: records array required' })
     }
 
     const duplicateFlags = []
+    const possibleDuplicateFlags = []
 
     for (const record of records) {
       // Skip records without required fields
-      if (!record.date || !record.wotaid || !record.callused || !record.ucall) {
+      if (!record.date || !record.wotaid || !record.callused || !record.stncall) {
         duplicateFlags.push(false)
+        possibleDuplicateFlags.push(false)
         continue
       }
 
@@ -245,29 +252,52 @@ app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
       const recordDate = new Date(record.date)
       recordDate.setHours(0, 0, 0, 0)
 
-      // Check if a record exists with matching date, wotaid, callused, ucall, band, and mode
-      // Note: callused in the incoming record has already had /P or /M suffix stripped
-      // We also check for variants with /P or /M in case legacy data has the suffix
-      // Band and mode are included to allow multiple QSOs on different bands/modes
-      const existing = await prisma.activatorLog.findFirst({
+      // Base criteria for matching (date, wotaid, callused, stncall)
+      // Must also match activatedby to ensure we only check this user's logs
+      const baseWhere = {
+        date: recordDate,
+        wotaid: record.wotaid,
+        OR: [
+          { callused: record.callused },
+          { callused: `${record.callused}/P` },
+          { callused: `${record.callused}/M` },
+        ],
+        stncall: record.stncall,
+        activatedby: userCallsign,
+      }
+
+      // Check for exact duplicate (including band/mode)
+      const exactDuplicate = await prisma.activatorLog.findFirst({
         where: {
-          date: recordDate,
-          wotaid: record.wotaid,
-          OR: [
-            { callused: record.callused },
-            { callused: `${record.callused}/P` },
-            { callused: `${record.callused}/M` },
-          ],
-          ucall: record.ucall,
+          ...baseWhere,
           band: record.band || null,
           mode: record.mode || null,
         },
       })
 
-      duplicateFlags.push(!!existing)
+      if (exactDuplicate) {
+        duplicateFlags.push(true)
+        possibleDuplicateFlags.push(false)
+        continue
+      }
+
+      // Check for possible duplicate (matching base fields but database has null band/mode)
+      const possibleDuplicate = await prisma.activatorLog.findFirst({
+        where: {
+          ...baseWhere,
+          band: null,
+          mode: null,
+        },
+      })
+
+      duplicateFlags.push(false)
+      possibleDuplicateFlags.push(!!possibleDuplicate)
     }
 
-    res.json({ duplicates: duplicateFlags })
+    res.json({
+      duplicates: duplicateFlags,
+      possibleDuplicates: possibleDuplicateFlags
+    })
   } catch (error) {
     console.error('Duplicate check error:', error)
     res.status(500).json({ error: 'Duplicate check failed' })
@@ -448,22 +478,38 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
       return res.status(401).json({ error: 'User not authenticated' })
     }
 
-    // Parse pagination parameters
+    // Parse pagination and filter parameters
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 25
+    const yearFilter = req.query.year ? parseInt(req.query.year as string) : null
+    const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc'
     const skip = (page - 1) * pageSize
 
-    // Get total count
-    const total = await prisma.activatorLog.count({
+    // Build where clause
+    const whereClause: any = { activatedby: userCallsign }
+    if (yearFilter) {
+      whereClause.year = yearFilter
+    }
+
+    // Get available years for this user
+    const allRecords = await prisma.activatorLog.findMany({
       where: { activatedby: userCallsign },
+      select: { year: true },
+      orderBy: { year: 'desc' },
+    })
+    const availableYears = [...new Set(allRecords.map(r => r.year))].sort((a, b) => b - a)
+
+    // Get total count with filter
+    const total = await prisma.activatorLog.count({
+      where: whereClause,
     })
 
     // Get paginated records
     const contacts = await prisma.activatorLog.findMany({
-      where: { activatedby: userCallsign },
+      where: whereClause,
       orderBy: [
-        { date: 'desc' },
-        { time: 'desc' },
+        { date: sortOrder },
+        { time: sortOrder },
       ],
       skip,
       take: pageSize,
@@ -491,6 +537,7 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
         total,
         totalPages: Math.ceil(total / pageSize),
       },
+      availableYears,
     })
   } catch (error) {
     console.error('Error fetching activator contacts:', error)
@@ -507,22 +554,38 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
       return res.status(401).json({ error: 'User not authenticated' })
     }
 
-    // Parse pagination parameters
+    // Parse pagination and filter parameters
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 25
+    const yearFilter = req.query.year ? parseInt(req.query.year as string) : null
+    const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc'
     const skip = (page - 1) * pageSize
 
-    // Get total count
-    const total = await prisma.chaserLog.count({
+    // Build where clause
+    const whereClause: any = { wkdby: userCallsign }
+    if (yearFilter) {
+      whereClause.year = yearFilter
+    }
+
+    // Get available years for this user
+    const allRecords = await prisma.chaserLog.findMany({
       where: { wkdby: userCallsign },
+      select: { year: true },
+      orderBy: { year: 'desc' },
+    })
+    const availableYears = [...new Set(allRecords.map(r => r.year))].sort((a, b) => b - a)
+
+    // Get total count with filter
+    const total = await prisma.chaserLog.count({
+      where: whereClause,
     })
 
     // Get paginated records
     const contacts = await prisma.chaserLog.findMany({
-      where: { wkdby: userCallsign },
+      where: whereClause,
       orderBy: [
-        { date: 'desc' },
-        { time: 'desc' },
+        { date: sortOrder },
+        { time: sortOrder },
       ],
       skip,
       take: pageSize,
@@ -550,6 +613,7 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
         total,
         totalPages: Math.ceil(total / pageSize),
       },
+      availableYears,
     })
   } catch (error) {
     console.error('Error fetching chaser contacts:', error)
@@ -616,6 +680,15 @@ app.get('/data/api/statistics/user', requireAuth, async (req, res) => {
   }
 })
 
+// Helper function to format WOTA reference
+function formatWotaReference(wotaid: number): string {
+  if (wotaid <= 214) {
+    return `LDW-${String(wotaid).padStart(3, '0')}`
+  } else {
+    return `LDO-${String(wotaid - 214).padStart(3, '0')}`
+  }
+}
+
 // Export activator log as CSV
 app.get('/data/api/export/activator', requireAuth, async (req, res) => {
   try {
@@ -666,12 +739,21 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
 
     console.log('Export activator - found', logs.length, 'logs')
 
+    // Get summit names for all unique WOTA IDs
+    const uniqueWotaIds = [...new Set(logs.map(log => log.wotaid))]
+    const summits = await prisma.summit.findMany({
+      where: { wotaid: { in: uniqueWotaIds } },
+      select: { wotaid: true, name: true },
+    })
+    const summitMap = new Map(summits.map(s => [s.wotaid, s.name]))
+
     // Create CSV header
     const headers = [
       'ID',
       'Activated By',
       'Call Used',
-      'WOTA ID',
+      'WOTA Reference',
+      'WOTA Name',
       'Date',
       'Time',
       'Year',
@@ -690,7 +772,8 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
       log.id,
       log.activatedby,
       log.callused,
-      log.wotaid,
+      formatWotaReference(log.wotaid),
+      summitMap.get(log.wotaid) || '',
       log.date.toISOString().split('T')[0],
       log.time ? log.time.toISOString().split('T')[1].split('.')[0] : '',
       log.year,
@@ -767,12 +850,21 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
 
     console.log('Export chaser - found', logs.length, 'logs')
 
+    // Get summit names for all unique WOTA IDs
+    const uniqueWotaIds = [...new Set(logs.map(log => log.wotaid))]
+    const summits = await prisma.summit.findMany({
+      where: { wotaid: { in: uniqueWotaIds } },
+      select: { wotaid: true, name: true },
+    })
+    const summitMap = new Map(summits.map(s => [s.wotaid, s.name]))
+
     // Create CSV header
     const headers = [
       'ID',
       'Worked By',
       'Unique Call',
-      'WOTA ID',
+      'WOTA Reference',
+      'WOTA Name',
       'Date',
       'Time',
       'Year',
@@ -790,7 +882,8 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
       log.id,
       log.wkdby,
       log.ucall,
-      log.wotaid,
+      formatWotaReference(log.wotaid),
+      summitMap.get(log.wotaid) || '',
       log.date.toISOString().split('T')[0],
       log.time ? log.time.toISOString().split('T')[1].split('.')[0] : '',
       log.year,
