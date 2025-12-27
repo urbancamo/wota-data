@@ -20,12 +20,20 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
     port: 3002,
+    allowedHosts: [
+      '.m5tea.uk',
+      '.vault',
+      'localhost',
+    ],
     proxy: {
       '/data/api': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/data\/api/, '/api'),
       },
     },
   },
 })
+
