@@ -43,8 +43,8 @@ export interface ActivatorLogInput {
   stncall: string
   ucall: string
   rpt?: number
-  s2s?: number
-  confirmed?: number
+  s2s?: boolean
+  confirmed?: boolean
   band?: string
   frequency?: number
   mode?: string
@@ -84,6 +84,7 @@ export interface DatabaseStatistics {
       wotaid: number
       name: string
       date: string
+      callsign: string
     }>
   }
 }

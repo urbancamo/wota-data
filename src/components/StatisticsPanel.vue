@@ -97,6 +97,7 @@ function formatDate(dateString: string | null): string {
             <div v-for="(summit, index) in statistics.summits.recentActivations" :key="index" class="recent-summit-item">
               <div class="summit-name">{{ summit.name }}</div>
               <div class="summit-id">{{ formatWotaReference(summit.wotaid) }}</div>
+              <div class="summit-callsign">{{ summit.callsign }}</div>
               <div class="summit-date">{{ formatDate(summit.date) }}</div>
             </div>
           </div>
@@ -206,7 +207,7 @@ function formatDate(dateString: string | null): string {
 
 .recent-summit-item {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 12px;
   align-items: center;
   padding: 8px 12px;
@@ -224,6 +225,13 @@ function formatDate(dateString: string | null): string {
 .summit-id {
   font-size: 12px;
   color: #1989fa;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.summit-callsign {
+  font-size: 12px;
+  color: #323233;
   font-weight: 600;
   font-family: monospace;
 }

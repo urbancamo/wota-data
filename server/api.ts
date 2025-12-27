@@ -1,12 +1,12 @@
-// @ts-expect-error - cookie-parser uses CommonJS export
+// @ts-ignore
 import express from 'express'
-// @ts-expect-error - cookie-parser uses CommonJS export
+// @ts-ignore
 import cors from 'cors'
-// @ts-expect-error - cookie-parser uses CommonJS export
+// @ts-ignore
 import dotenv from 'dotenv'
-// @ts-expect-error - cookie-parser uses CommonJS export
+// @ts-ignore
 import session from 'express-session'
-// @ts-expect-error - cookie-parser uses CommonJS export
+// @ts-ignore
 import cookieParser from 'cookie-parser'
 import { prisma as realPrisma, getCmsDb, disconnectDatabases } from './db'
 import { createPrismaStub } from './db-stub'
@@ -158,6 +158,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
         recordDate.setHours(0, 0, 0, 0)
 
         // Check if this is a duplicate
+        // Include band and mode in duplicate check if present in ADIF file
         const existing = await prisma.activatorLog.findFirst({
           where: {
             date: recordDate,
@@ -168,6 +169,8 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
               { callused: `${record.callused}/M` },
             ],
             ucall: record.ucall,
+            band: record.band || null,
+            mode: record.mode || null,
           },
         })
 
@@ -184,16 +187,16 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
             callused: record.callused,
             wotaid: record.wotaid,
             date: recordDate,
-            time: record.time ? new Date(record.time) : null,
+            time: record.time || null,
             year: record.year,
             stncall: record.stncall,
             ucall: record.ucall,
-            rpt: null, // Always null
+            rpt: null,
             s2s: record.s2s,
-            confirmed: record.confirmed,
-            band: record.band,
-            frequency: record.frequency,
-            mode: record.mode,
+            confirmed: false, // Defaults to false (updated by separate job)
+            band: record.band || null,
+            frequency: record.frequency || null,
+            mode: record.mode || null,
           },
         })
 
@@ -242,9 +245,10 @@ app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
       const recordDate = new Date(record.date)
       recordDate.setHours(0, 0, 0, 0)
 
-      // Check if a record exists with matching date, wotaid, callused, and ucall
+      // Check if a record exists with matching date, wotaid, callused, ucall, band, and mode
       // Note: callused in the incoming record has already had /P or /M suffix stripped
       // We also check for variants with /P or /M in case legacy data has the suffix
+      // Band and mode are included to allow multiple QSOs on different bands/modes
       const existing = await prisma.activatorLog.findFirst({
         where: {
           date: recordDate,
@@ -255,6 +259,8 @@ app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
             { callused: `${record.callused}/M` },
           ],
           ucall: record.ucall,
+          band: record.band || null,
+          mode: record.mode || null,
         },
       })
 
@@ -377,6 +383,7 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
       select: {
         wotaid: true,
         date: true,
+        callused: true,
       },
       distinct: ['wotaid'],
     })
@@ -392,6 +399,7 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
           wotaid: activation.wotaid,
           name: summit?.name || `Summit ${activation.wotaid}`,
           date: activation.date,
+          callsign: activation.callused,
         }
       })
     )
@@ -431,6 +439,124 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
   }
 })
 
+// Get paginated activator contacts for logged-in user
+app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
+  try {
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    // Parse pagination parameters
+    const page = parseInt(req.query.page as string) || 1
+    const pageSize = parseInt(req.query.pageSize as string) || 25
+    const skip = (page - 1) * pageSize
+
+    // Get total count
+    const total = await prisma.activatorLog.count({
+      where: { activatedby: userCallsign },
+    })
+
+    // Get paginated records
+    const contacts = await prisma.activatorLog.findMany({
+      where: { activatedby: userCallsign },
+      orderBy: [
+        { date: 'desc' },
+        { time: 'desc' },
+      ],
+      skip,
+      take: pageSize,
+    })
+
+    // Get summit names for each contact
+    const contactsWithSummits = await Promise.all(
+      contacts.map(async (contact) => {
+        const summit = await prisma.summit.findUnique({
+          where: { wotaid: contact.wotaid },
+          select: { name: true },
+        })
+        return {
+          ...contact,
+          summitName: summit?.name || null,
+        }
+      })
+    )
+
+    res.json({
+      contacts: contactsWithSummits,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    })
+  } catch (error) {
+    console.error('Error fetching activator contacts:', error)
+    res.status(500).json({ error: 'Failed to fetch contacts' })
+  }
+})
+
+// Get chaser contacts for authenticated user
+app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
+  try {
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    // Parse pagination parameters
+    const page = parseInt(req.query.page as string) || 1
+    const pageSize = parseInt(req.query.pageSize as string) || 25
+    const skip = (page - 1) * pageSize
+
+    // Get total count
+    const total = await prisma.chaserLog.count({
+      where: { wkdby: userCallsign },
+    })
+
+    // Get paginated records
+    const contacts = await prisma.chaserLog.findMany({
+      where: { wkdby: userCallsign },
+      orderBy: [
+        { date: 'desc' },
+        { time: 'desc' },
+      ],
+      skip,
+      take: pageSize,
+    })
+
+    // Get summit names for each contact
+    const contactsWithSummits = await Promise.all(
+      contacts.map(async (contact) => {
+        const summit = await prisma.summit.findUnique({
+          where: { wotaid: contact.wotaid },
+          select: { name: true },
+        })
+        return {
+          ...contact,
+          summitName: summit?.name || null,
+        }
+      })
+    )
+
+    res.json({
+      contacts: contactsWithSummits,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    })
+  } catch (error) {
+    console.error('Error fetching chaser contacts:', error)
+    res.status(500).json({ error: 'Failed to fetch contacts' })
+  }
+})
+
 // Get user-specific statistics
 app.get('/data/api/statistics/user', requireAuth, async (req, res) => {
   try {
@@ -442,31 +568,31 @@ app.get('/data/api/statistics/user', requireAuth, async (req, res) => {
 
     // Get activator statistics for this user (ucall)
     const totalActivations = await prisma.activatorLog.count({
-      where: { ucall: userCallsign }
+      where: { activatedby: userCallsign }
     })
     const uniqueActivatedSummits = await prisma.activatorLog.groupBy({
       by: ['wotaid'],
-      where: { ucall: userCallsign }
+      where: { activatedby: userCallsign }
     })
 
     // Get chaser statistics for this user (ucall)
     const totalChases = await prisma.chaserLog.count({
-      where: { ucall: userCallsign }
+      where: { wkdby: userCallsign }
     })
     const uniqueChasedSummits = await prisma.chaserLog.groupBy({
       by: ['wotaid'],
-      where: { ucall: userCallsign }
+      where: { wkdby: userCallsign }
     })
 
     // Get recent activity dates for this user
     const recentActivation = await prisma.activatorLog.findFirst({
-      where: { ucall: userCallsign },
+      where: { activatedby: userCallsign },
       orderBy: { date: 'desc' },
       select: { date: true },
     })
 
     const recentChase = await prisma.chaserLog.findFirst({
-      where: { ucall: userCallsign },
+      where: { wkdby: userCallsign },
       orderBy: { date: 'desc' },
       select: { date: true },
     })
@@ -515,11 +641,11 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
       console.log('Export activator - parsed callsigns:', callsigns)
       if (callsigns.length > 0) {
         // Match ONLY on ucall field
-        whereClause.ucall = { in: callsigns }
+        whereClause.activatedby = { in: callsigns }
       }
     } else {
       // If no callsigns specified, default to the logged-in user's callsign
-      whereClause.ucall = userCallsign
+      whereClause.activatedby = userCallsign
     }
 
     // Add year filter
@@ -616,11 +742,11 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
       console.log('Export chaser - parsed callsigns:', callsigns)
       if (callsigns.length > 0) {
         // Match ONLY on ucall field
-        whereClause.ucall = { in: callsigns }
+        whereClause.wkdby = { in: callsigns }
       }
     } else {
       // If no callsigns specified, default to the logged-in user's callsign
-      whereClause.ucall = userCallsign
+      whereClause.wkdby = userCallsign
     }
 
     // Add year filter

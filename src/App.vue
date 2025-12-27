@@ -7,9 +7,12 @@ import ButtonBar from './components/ButtonBar.vue'
 import AdifPreviewModal from './components/AdifPreviewModal.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import UserStatisticsPanel from './components/UserStatisticsPanel.vue'
+import ContactsView from './components/ContactsView.vue'
 import { mapToActivatorLog, calculateStatistics } from './services/adifService'
 import { apiClient } from './services/api'
 import type { ParsedAdif, ImportStatistics } from './types/adif'
+
+const activeView = ref(0)
 
 const showPreview = ref(false)
 const parsedData = ref<ParsedAdif | null>(null)
@@ -115,11 +118,22 @@ async function handleConfirmImport() {
 
       <!-- Page Content -->
       <div class="page-content">
-        <!-- Statistics Panels -->
-        <div class="statistics-container">
-          <StatisticsPanel />
-          <UserStatisticsPanel />
-        </div>
+        <van-tabs v-model:active="activeView" sticky :offset-top="119">
+          <van-tab title="Statistics">
+            <div class="statistics-container">
+              <StatisticsPanel />
+              <UserStatisticsPanel />
+            </div>
+          </van-tab>
+
+          <van-tab title="Activator Contacts">
+            <ContactsView contact-type="activator" />
+          </van-tab>
+
+          <van-tab title="Chaser Contacts">
+            <ContactsView contact-type="chaser" />
+          </van-tab>
+        </van-tabs>
       </div>
 
       <!-- ADIF Preview Modal -->
@@ -140,7 +154,7 @@ async function handleConfirmImport() {
 
 .page-content {
   min-height: 100vh;
-  padding-top: 46px;
+  padding-top: 119px;
 }
 
 .statistics-container {
@@ -152,6 +166,10 @@ async function handleConfirmImport() {
 @media (max-width: 768px) {
   .statistics-container {
     grid-template-columns: 1fr;
+  }
+
+  .page-content {
+    padding-top: 190px;
   }
 }
 </style>

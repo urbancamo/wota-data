@@ -259,4 +259,36 @@ export const apiClient = {
     document.body.removeChild(a)
     window.URL.revokeObjectURL(downloadUrl)
   },
+
+  async getActivatorContacts(page: number = 1, pageSize: number = 25): Promise<any> {
+    const response = await fetch(
+      `${API_BASE_URL}/contacts/activator?page=${page}&pageSize=${pageSize}`,
+      {
+        method: 'GET',
+        credentials: 'include',
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch activator contacts')
+    }
+
+    return response.json()
+  },
+
+  async getChaserContacts(page: number = 1, pageSize: number = 25): Promise<any> {
+    const response = await fetch(
+      `${API_BASE_URL}/contacts/chaser?page=${page}&pageSize=${pageSize}`,
+      {
+        method: 'GET',
+        credentials: 'include',
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch chaser contacts')
+    }
+
+    return response.json()
+  },
 }

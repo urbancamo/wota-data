@@ -1,4 +1,5 @@
 import { AdifParser } from 'adif-parser-ts'
+import { parseWotaReference } from '../utils/wotaReference'
 import type {
   AdifRecord,
   ParsedAdif,
@@ -55,26 +56,42 @@ async function convertSotaToWota(records: AdifRecord[]): Promise<void> {
   const { apiClient } = await import('./api')
 
   for (const record of records) {
-    // Skip if already has a WOTA reference
-    if (record.my_sig_info || record.sig_info) {
-      continue
+    // Convert MY_SOTA_REF (your station's summit) to WOTA
+    if (!record.my_sig_info) {
+      const sotaRef = extractSotaReference(record)
+      if (sotaRef && sotaRef.toUpperCase().startsWith('G/LD')) {
+        try {
+          console.log(`Looking up MY_SOTA_REF: ${sotaRef}`)
+          const summit = await apiClient.lookupSotaReference(sotaRef)
+          if (summit) {
+            console.log(`Found summit for ${sotaRef}: ${summit.name} (wotaid: ${summit.wotaid})`)
+            // Set the WOTA reference for your station
+            record.my_sig_info = summit.wotaid.toString()
+            record.my_sig = 'WOTA'
+          } else {
+            console.warn(`No summit found in database for SOTA reference: ${sotaRef}`)
+          }
+        } catch (error) {
+          console.error(`Error looking up SOTA reference ${sotaRef}:`, error)
+        }
+      }
     }
 
-    const sotaRef = extractSotaReference(record)
-    if (sotaRef && sotaRef.toUpperCase().startsWith('G/LD')) {
+    // Convert SOTA_REF (station worked's summit) to WOTA for S2S detection
+    if (!record.sig_info && record.sota_ref && record.sota_ref.toUpperCase().startsWith('G/LD')) {
       try {
-        console.log(`Looking up SOTA reference: ${sotaRef}`)
-        const summit = await apiClient.lookupSotaReference(sotaRef)
+        console.log(`Looking up SOTA_REF for S2S: ${record.sota_ref}`)
+        const summit = await apiClient.lookupSotaReference(record.sota_ref)
         if (summit) {
-          console.log(`Found summit for ${sotaRef}: ${summit.name} (wotaid: ${summit.wotaid})`)
-          // Set the WOTA reference
-          record.my_sig_info = summit.wotaid.toString()
-          record.my_sig = 'WOTA'
+          console.log(`Found WOTA summit for ${record.sota_ref}: ${summit.name} (wotaid: ${summit.wotaid})`)
+          // Set SIG/SIG_INFO to indicate station worked was on a WOTA summit
+          record.sig_info = summit.wotaid.toString()
+          record.sig = 'WOTA'
         } else {
-          console.warn(`No summit found in database for SOTA reference: ${sotaRef}`)
+          console.log(`SOTA_REF ${record.sota_ref} is not a WOTA summit - no S2S`)
         }
       } catch (error) {
-        console.error(`Error looking up SOTA reference ${sotaRef}:`, error)
+        console.error(`Error looking up SOTA_REF ${record.sota_ref}:`, error)
       }
     }
   }
@@ -106,10 +123,18 @@ export function validateRecord(record: AdifRecord): ValidationResult {
 export function extractWotaId(sigInfo: string | undefined): number | null {
   if (!sigInfo) return null
 
-  // Handle formats like "LDW-001", "LDW-1", "001", "1"
+  // Try to parse as formatted WOTA reference (LDW-XXX or LDO-XXX)
+  const wotaId = parseWotaReference(sigInfo.toUpperCase())
+  if (wotaId !== null) {
+    return wotaId
+  }
+
+  // Fallback: extract plain number for backward compatibility
   const match = sigInfo.match(/(\d+)/)
   if (match) {
-    return parseInt(match[1], 10)
+    const num = parseInt(match[1], 10)
+    // Assume plain numbers <= 214 are LDW, > 214 need no conversion
+    return num
   }
 
   return null
@@ -135,8 +160,8 @@ function stripPortableSuffix(callsign: string): string {
 }
 
 export function mapToActivatorLog(record: AdifRecord): ActivatorLogInput | null {
-  // Extract WOTA ID from SIG_INFO or MY_SIG_INFO
-  const wotaId = extractWotaId(record.sig_info || record.my_sig_info)
+  // Extract WOTA ID from MY_SIG_INFO (activator's summit), not SIG_INFO (station worked's summit)
+  const wotaId = extractWotaId(record.my_sig_info || record.sig_info)
 
   if (!wotaId || !record.call || !record.qso_date) {
     return null
@@ -150,19 +175,22 @@ export function mapToActivatorLog(record: AdifRecord): ActivatorLogInput | null 
     parseInt(dateStr.substring(6, 8))
   )
 
-  // Parse time if present (format: HHMMSS or HHMM)
+  // Parse time (format: HHMM or HHMMSS)
   let time: Date | undefined
   if (record.time_on) {
-    const timeStr = record.time_on.padEnd(6, '0')
+    const timeStr = record.time_on.padEnd(6, '0') // Pad to HHMMSS if only HHMM
+    const hours = parseInt(timeStr.substring(0, 2))
+    const minutes = parseInt(timeStr.substring(2, 4))
+    const seconds = parseInt(timeStr.substring(4, 6))
+
+    // Create a Date object with time only (MySQL TIME type)
     time = new Date()
-    time.setHours(parseInt(timeStr.substring(0, 2)))
-    time.setMinutes(parseInt(timeStr.substring(2, 4)))
-    time.setSeconds(parseInt(timeStr.substring(4, 6)))
+    time.setHours(hours, minutes, seconds, 0)
   }
 
-  // Determine if Summit-to-Summit
-  const isS2S =
-    record.sig?.toUpperCase() === 'WOTA' && record.sig_info ? 1 : 0
+  // Determine if Summit-to-Summit (station worked was also on a WOTA summit)
+  // Note: convertSotaToWota() has already converted SOTA_REF to SIG/SIG_INFO if it's a WOTA summit
+  const isS2S = !!(record.sig?.toUpperCase() === 'WOTA' && record.sig_info)
 
   // Strip /P or /M suffix from callused before storing
   const rawCallused = record.station_callsign || record.operator || ''
@@ -175,11 +203,11 @@ export function mapToActivatorLog(record: AdifRecord): ActivatorLogInput | null 
     date,
     time,
     year: date.getFullYear(),
-    stncall: record.call.substring(0, 12),
+    stncall: stripPortableSuffix(record.call).substring(0, 12),
     ucall: record.call.substring(0, 8),
-    rpt: record.rst_sent ? 1 : undefined,
-    s2s: isS2S || undefined,
-    confirmed: undefined,
+    rpt: undefined,  // Always null
+    s2s: isS2S,  // true or false
+    confirmed: false,  // Defaults to false (updated by separate job)
     band: record.band?.substring(0, 8),
     frequency: record.freq ? parseFloat(record.freq) : undefined,
     mode: record.mode?.substring(0, 32),

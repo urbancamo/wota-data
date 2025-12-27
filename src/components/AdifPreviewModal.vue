@@ -765,23 +765,27 @@ function getSummitName(record: AdifRecord, index: number): string {
 }
 
 .action-buttons {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  justify-content: center;
   gap: 12px;
   padding: 16px;
   border-top: 1px solid #eee;
   background: white;
 }
 
-@media (max-width: 768px) {
-  .action-buttons {
-    grid-template-columns: 1fr 1fr;
-  }
+.action-buttons > * {
+  flex: 0 1 200px;
+  max-width: 200px;
 }
 
 @media (max-width: 480px) {
   .action-buttons {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .action-buttons > * {
+    flex: 1;
+    max-width: none;
   }
 }
 </style>
