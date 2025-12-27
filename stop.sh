@@ -54,8 +54,8 @@ stop_process "API server" ".pids/api.pid"
 stop_process "Vite dev server" ".pids/dev.pid"
 
 # Also kill any processes on the ports (backup cleanup)
-echo -e "${YELLOW}Cleaning up any processes on ports 3001 and 5173...${NC}"
-lsof -ti:3001 | xargs kill -9 2>/dev/null || true
-lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+echo -e "${YELLOW}Cleaning up any processes on ports 3002 and 3003...${NC}"
+lsof -ti:3002 | xargs kill -9 2>/dev/null || true
+lsof -ti:3003 | xargs kill -9 2>/dev/null || true
 
 echo -e "${GREEN}✓ All servers stopped${NC}"
