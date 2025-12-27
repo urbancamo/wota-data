@@ -11,7 +11,28 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdifPreviewModal: typeof import('./src/components/AdifPreviewModal.vue')['default']
+    AuthGuard: typeof import('./src/components/AuthGuard.vue')['default']
+    ButtonBar: typeof import('./src/components/ButtonBar.vue')['default']
+    ExportFilterDialog: typeof import('./src/components/ExportFilterDialog.vue')['default']
+    LoginForm: typeof import('./src/components/LoginForm.vue')['default']
+    LogoutButton: typeof import('./src/components/LogoutButton.vue')['default']
+    StatisticsPanel: typeof import('./src/components/StatisticsPanel.vue')['default']
+    UserStatisticsPanel: typeof import('./src/components/UserStatisticsPanel.vue')['default']
+    VanButton: typeof import('vant/es')['Button']
+    VanCard: typeof import('vant/es')['Card']
+    VanCellGroup: typeof import('vant/es')['CellGroup']
+    VanCheckbox: typeof import('vant/es')['Checkbox']
+    VanCollapse: typeof import('vant/es')['Collapse']
+    VanCollapseItem: typeof import('vant/es')['CollapseItem']
+    VanField: typeof import('vant/es')['Field']
+    VanForm: typeof import('vant/es')['Form']
+    VanIcon: typeof import('vant/es')['Icon']
+    VanLoading: typeof import('vant/es')['Loading']
+    VanNavBar: typeof import('vant/es')['NavBar']
+    VanPopup: typeof import('vant/es')['Popup']
     VanTabbar: typeof import('vant/es')['Tabbar']
     VanTabbarItem: typeof import('vant/es')['TabbarItem']
+    VanTag: typeof import('vant/es')['Tag']
   }
 }

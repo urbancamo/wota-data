@@ -1,0 +1,242 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { showNotify } from 'vant'
+import { apiClient } from '../services/api'
+import type { DatabaseStatistics } from '../types/adif'
+import { formatWotaReference } from '../utils/wotaReference'
+
+const statistics = ref<DatabaseStatistics | null>(null)
+const loading = ref(true)
+
+async function fetchStatistics() {
+  try {
+    loading.value = true
+    const result = await apiClient.getStatistics()
+    console.log('Statistics fetched:', result)
+    statistics.value = result
+  } catch (error) {
+    console.error('Error fetching statistics:', error)
+    showNotify({
+      type: 'warning',
+      message: error instanceof Error ? error.message : 'Failed to load statistics',
+    })
+    statistics.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchStatistics()
+})
+
+function formatDate(dateString: string | null): string {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  return date.toLocaleDateString()
+}
+</script>
+
+<template>
+  <div class="statistics-panel">
+    <div class="stats-card">
+      <h3 class="card-title">Database Statistics</h3>
+
+      <div v-if="loading" class="loading-container">
+        <van-loading type="spinner" size="24" />
+        <div class="loading-text">Loading statistics...</div>
+      </div>
+
+      <div v-else-if="statistics" class="stats-grid">
+        <!-- Activations Section -->
+        <div class="stat-section">
+          <div class="section-title">Activations</div>
+          <div class="stat-item">
+            <div class="stat-label">Total QSOs</div>
+            <div class="stat-value">{{ statistics.activations.total }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Unique Activators</div>
+            <div class="stat-value">{{ statistics.activations.uniqueActivators }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Summits Activated</div>
+            <div class="stat-value">{{ statistics.activations.uniqueSummits }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Last Activity</div>
+            <div class="stat-value small">{{ formatDate(statistics.activations.lastActivity) }}</div>
+          </div>
+        </div>
+
+        <!-- Chases Section -->
+        <div class="stat-section">
+          <div class="section-title">Chases</div>
+          <div class="stat-item">
+            <div class="stat-label">Total QSOs</div>
+            <div class="stat-value">{{ statistics.chases.total }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Unique Chasers</div>
+            <div class="stat-value">{{ statistics.chases.uniqueChasers }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Summits Chased</div>
+            <div class="stat-value">{{ statistics.chases.uniqueSummits }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Last Activity</div>
+            <div class="stat-value small">{{ formatDate(statistics.chases.lastActivity) }}</div>
+          </div>
+        </div>
+
+        <!-- Summits Section -->
+        <div class="stat-section full-width">
+          <div class="section-title">Recent Activations</div>
+          <div v-if="statistics.summits.recentActivations && statistics.summits.recentActivations.length > 0" class="recent-summits-list">
+            <div v-for="(summit, index) in statistics.summits.recentActivations" :key="index" class="recent-summit-item">
+              <div class="summit-name">{{ summit.name }}</div>
+              <div class="summit-id">{{ formatWotaReference(summit.wotaid) }}</div>
+              <div class="summit-date">{{ formatDate(summit.date) }}</div>
+            </div>
+          </div>
+          <div v-else class="no-data">No recent activations</div>
+        </div>
+      </div>
+
+      <div v-else class="no-data">No statistics available</div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.statistics-panel {
+  padding: 16px;
+}
+
+.stats-card {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.card-title {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #323233;
+}
+
+.loading-container {
+  text-align: center;
+  padding: 20px;
+}
+
+.loading-text {
+  text-align: center;
+  margin-top: 8px;
+  color: #666;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.stat-section {
+  background: #f7f8fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.stat-section.full-width {
+  grid-column: 1 / -1;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #323233;
+  margin-bottom: 12px;
+  border-bottom: 2px solid #1989fa;
+  padding-bottom: 8px;
+}
+
+.stat-item {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.stat-item:last-child {
+  margin-bottom: 0;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #323233;
+}
+
+.stat-value.small {
+  font-size: 14px;
+}
+
+.no-data {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+}
+
+.recent-summits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recent-summit-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 4px;
+  border-left: 3px solid #1989fa;
+}
+
+.summit-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #323233;
+}
+
+.summit-id {
+  font-size: 12px;
+  color: #1989fa;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.summit-date {
+  font-size: 12px;
+  color: #969799;
+}
+
+@media (max-width: 640px) {
+  .recent-summit-item {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+</style>

@@ -41,4 +41,4 @@ __screenshots__/
 .env.*.local
 
 # Nested scaffold folder (can be removed)
-/wota-adif/
+/wota-adif/.pids/

@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { showNotify } from 'vant'
 import { useAuth } from '../composables/useAuth'
+import backgroundImage from '../assets/images/login-background.png'
 
 const { login, error } = useAuth()
 
@@ -41,10 +42,10 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="login-container">
+  <div class="login-container" :style="{ backgroundImage: `url(${backgroundImage})` }">
     <div class="login-card">
       <div class="login-header">
-        <h1>WOTA Spotter</h1>
+        <h1>WOTA Data</h1>
         <p>Please log in to continue</p>
       </div>
 
@@ -54,8 +55,8 @@ async function handleLogin() {
             v-model="username"
             name="username"
             label="Username"
-            placeholder="Enter username"
-            :rules="[{ required: true, message: 'Username is required' }]"
+            placeholder="Enter callsign"
+            :rules="[{ required: true, message: 'Callsign is required' }]"
             autocomplete="username"
           />
 
@@ -92,7 +93,10 @@ async function handleLogin() {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   padding: 16px;
 }
 

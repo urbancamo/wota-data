@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("WOTA_DATABASE_URL")
+}
+
+model Spot {
+  id       Int      @id
+  datetime DateTime @db.Timestamp(0)
+  call     String   @db.VarChar(12)
+  wotaid   Int      @db.UnsignedMediumInt
+  freqmode String   @db.VarChar(20)
+  comment  String   @db.VarChar(80)
+  spotter  String   @db.Char(11)
+
+  @@map("spots")
+}
+
+model Summit {
+  wotaid        Int       @id @db.UnsignedMediumInt
+  sotaid        Int?      @db.UnsignedMediumInt
+  book          String    @db.Char(2)
+  name          String    @db.VarChar(64)
+  height        Int
+  reference     String    @db.Char(14)
+  last_act_by   String?   @db.Char(11)
+  last_act_date DateTime? @db.Date
+  humpid        Int?      @db.UnsignedMediumInt
+  gridid        String?   @db.Char(6)
+
+  @@map("summits")
+}
+
+model Alert {
+  id       Int      @id
+  datetime DateTime @db.DateTime(0)
+  call     String   @db.VarChar(12)
+  wotaid   Int      @db.UnsignedMediumInt
+  freqmode String   @db.VarChar(40)
+  comment  String?  @db.VarChar(80)
+  postedby String   @db.Char(11)
+
+  @@index([datetime])
+  @@map("alerts")
+}
+
+model ActivatorLog {
+  id          Int       @id @default(autoincrement())
+  activatedby String    @db.Char(11)
+  callused    String    @db.VarChar(8)
+  wotaid      Int       @db.UnsignedMediumInt
+  date        DateTime  @db.Date
+  time        DateTime? @db.Time(0)
+  year        Int       @db.Year
+  stncall     String    @db.VarChar(12)
+  ucall       String    @db.VarChar(8)
+  rpt         Boolean?  @db.TinyInt
+  s2s         Boolean?  @db.TinyInt
+  confirmed   Boolean?  @db.TinyInt
+  band        String?   @db.VarChar(8)
+  frequency   Float?    @db.Float
+  mode        String?   @db.VarChar(32)
+
+  @@index([activatedby])
+  @@index([wotaid])
+  @@index([stncall])
+  @@index([year])
+  @@index([callused])
+  @@index([date])
+  @@index([ucall])
+  @@map("activator_log")
+}
+
+model ChaserLog {
+  id            Int       @id @default(autoincrement())
+  wkdby         String    @db.Char(11)
+  ucall         String    @db.VarChar(8)
+  wotaid        Int       @db.UnsignedMediumInt
+  date          DateTime  @db.Date
+  time          DateTime? @db.Time(0)
+  year          Int       @db.Year
+  stncall       String    @db.VarChar(12)
+  rpt           Boolean?  @db.TinyInt
+  points        Int       @db.TinyInt
+  wawpoints     Int       @db.TinyInt
+  points_yr     Int       @db.TinyInt
+  wawpoints_yr  Int       @db.TinyInt
+  confirmed     Boolean?  @db.TinyInt
+
+  @@index([wkdby])
+  @@index([wotaid])
+  @@index([stncall])
+  @@index([year])
+  @@index([ucall])
+  @@map("chaser_log")
+}

@@ -1,5 +1,5 @@
 import { getCmsDb } from '../db'
-import crypto from 'crypto'
+import * as crypto from 'crypto'
 
 export interface User {
   id: number

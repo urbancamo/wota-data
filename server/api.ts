@@ -1,14 +1,30 @@
+// @ts-expect-error - cookie-parser uses CommonJS export
 import express from 'express'
+// @ts-expect-error - cookie-parser uses CommonJS export
 import cors from 'cors'
+// @ts-expect-error - cookie-parser uses CommonJS export
 import dotenv from 'dotenv'
+// @ts-expect-error - cookie-parser uses CommonJS export
 import session from 'express-session'
+// @ts-expect-error - cookie-parser uses CommonJS export
 import cookieParser from 'cookie-parser'
-import { prisma, getCmsDb, disconnectDatabases } from './db'
+import { prisma as realPrisma, getCmsDb, disconnectDatabases } from './db'
+import { createPrismaStub } from './db-stub'
 import { authService } from './services/authService'
 import { requireAuth } from './middleware/authMiddleware'
 
 // Load environment variables
 dotenv.config()
+
+// Check for stub database flag
+const STUB_DB = process.argv.includes('--stub-db') || process.argv.includes('--dry-run')
+
+if (STUB_DB) {
+  console.log('🔧 STUB MODE ENABLED - Mutations will be logged (not executed), reads will execute normally')
+}
+
+// Use stubbed or real Prisma based on flag
+const prisma = STUB_DB ? createPrismaStub(realPrisma) : realPrisma
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -33,12 +49,12 @@ app.use(session({
 }))
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/data/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
 // Authentication endpoints
-app.post('/api/auth/login', async (req, res) => {
+app.post('/data/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body
 
@@ -75,7 +91,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 })
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/data/api/auth/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
       console.error('Logout error:', err)
@@ -86,7 +102,7 @@ app.post('/api/auth/logout', (req, res) => {
   })
 })
 
-app.get('/api/auth/session', (req, res) => {
+app.get('/data/api/auth/session', (req, res) => {
   if (req.session && req.session.userId) {
     res.json({
       authenticated: true,
@@ -100,8 +116,160 @@ app.get('/api/auth/session', (req, res) => {
   }
 })
 
+// ADIF import endpoint
+app.post('/data/api/import/adif', requireAuth, async (req, res) => {
+  try {
+    const { records } = req.body
+
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Invalid request: records array required' })
+    }
+
+    // Get the authenticated user's username
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    const results = []
+    const errors = []
+    let skipped = 0
+
+    // Import records using Prisma transaction
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i]
+
+      try {
+        // Validate required fields (activatedby is set from session, not from record)
+        if (!record.wotaid || !record.stncall || !record.date) {
+          errors.push({ record: i, reason: 'Missing required fields' })
+          continue
+        }
+
+        // Validate WOTA ID is a valid number
+        if (typeof record.wotaid !== 'number' || record.wotaid <= 0) {
+          errors.push({ record: i, reason: 'Invalid WOTA reference' })
+          continue
+        }
+
+        // Parse date to compare only the date part (not time)
+        const recordDate = new Date(record.date)
+        recordDate.setHours(0, 0, 0, 0)
+
+        // Check if this is a duplicate
+        const existing = await prisma.activatorLog.findFirst({
+          where: {
+            date: recordDate,
+            wotaid: record.wotaid,
+            OR: [
+              { callused: record.callused },
+              { callused: `${record.callused}/P` },
+              { callused: `${record.callused}/M` },
+            ],
+            ucall: record.ucall,
+          },
+        })
+
+        if (existing) {
+          console.log(`Skipping duplicate record ${i}: ${record.callused} -> ${record.stncall} on ${recordDate.toISOString().split('T')[0]}`)
+          skipped++
+          continue
+        }
+
+        // Insert into database
+        const result = await prisma.activatorLog.create({
+          data: {
+            activatedby: userCallsign, // Use authenticated user's username
+            callused: record.callused,
+            wotaid: record.wotaid,
+            date: recordDate,
+            time: record.time ? new Date(record.time) : null,
+            year: record.year,
+            stncall: record.stncall,
+            ucall: record.ucall,
+            rpt: null, // Always null
+            s2s: record.s2s,
+            confirmed: record.confirmed,
+            band: record.band,
+            frequency: record.frequency,
+            mode: record.mode,
+          },
+        })
+
+        results.push(result)
+      } catch (error) {
+        console.error(`Error importing record ${i}:`, error)
+        errors.push({
+          record: i,
+          reason: error instanceof Error ? error.message : 'Unknown error'
+        })
+      }
+    }
+
+    res.json({
+      success: true,
+      imported: results.length,
+      skipped: skipped,
+      failed: errors.length,
+      errors: errors.length > 0 ? errors : undefined,
+    })
+  } catch (error) {
+    console.error('Import error:', error)
+    res.status(500).json({ error: 'Import failed' })
+  }
+})
+
+// Check for duplicate records in activator_log
+app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
+  try {
+    const { records } = req.body
+
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Invalid request: records array required' })
+    }
+
+    const duplicateFlags = []
+
+    for (const record of records) {
+      // Skip records without required fields
+      if (!record.date || !record.wotaid || !record.callused || !record.ucall) {
+        duplicateFlags.push(false)
+        continue
+      }
+
+      // Parse date to compare only the date part (not time)
+      const recordDate = new Date(record.date)
+      recordDate.setHours(0, 0, 0, 0)
+
+      // Check if a record exists with matching date, wotaid, callused, and ucall
+      // Note: callused in the incoming record has already had /P or /M suffix stripped
+      // We also check for variants with /P or /M in case legacy data has the suffix
+      const existing = await prisma.activatorLog.findFirst({
+        where: {
+          date: recordDate,
+          wotaid: record.wotaid,
+          OR: [
+            { callused: record.callused },
+            { callused: `${record.callused}/P` },
+            { callused: `${record.callused}/M` },
+          ],
+          ucall: record.ucall,
+        },
+      })
+
+      duplicateFlags.push(!!existing)
+    }
+
+    res.json({ duplicates: duplicateFlags })
+  } catch (error) {
+    console.error('Duplicate check error:', error)
+    res.status(500).json({ error: 'Duplicate check failed' })
+  }
+})
+
 // Get all spots
-app.get('/api/spots', requireAuth, async (req, res) => {
+app.get('/data/api/spots', requireAuth, async (req, res) => {
   try {
     const spots = await prisma.spot.findMany({
       orderBy: { datetime: 'desc' },
@@ -115,7 +283,7 @@ app.get('/api/spots', requireAuth, async (req, res) => {
 })
 
 // Get all summits
-app.get('/api/summits', requireAuth, async (req, res) => {
+app.get('/data/api/summits', requireAuth, async (req, res) => {
   try {
     const summits = await prisma.summit.findMany({
       orderBy: { wotaid: 'asc' },
@@ -127,8 +295,45 @@ app.get('/api/summits', requireAuth, async (req, res) => {
   }
 })
 
+// Look up summit by SOTA reference
+app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
+  try {
+    const sotaRef = req.params.reference.toUpperCase()
+    console.log(`Looking up SOTA reference: ${sotaRef}`)
+
+    // Parse SOTA reference (e.g., "G/LD-014" -> "014")
+    // SOTA references for Lake District start with G/LD-
+    const match = sotaRef.match(/^G\/LD-(\d+)$/)
+    if (!match) {
+      console.log(`Invalid SOTA reference format: ${sotaRef}`)
+      return res.status(400).json({ error: 'Invalid SOTA reference format' })
+    }
+
+    const sotaNumber = match[1] // e.g., "014"
+    const sotaId = parseInt(sotaNumber, 10) // Convert to integer: 14
+    console.log(`Parsed SOTA number: ${sotaNumber} -> sotaid: ${sotaId}`)
+
+    const summit = await prisma.summit.findFirst({
+      where: {
+        sotaid: sotaId,
+      },
+    })
+
+    if (!summit) {
+      console.log(`Summit not found for SOTA reference: ${sotaRef} (sotaid: ${sotaId})`)
+      return res.status(404).json({ error: 'Summit not found for SOTA reference' })
+    }
+
+    console.log(`Found summit: ${summit.name} (wotaid: ${summit.wotaid})`)
+    res.json(summit)
+  } catch (error) {
+    console.error('Error looking up SOTA reference:', error)
+    res.status(500).json({ error: 'Failed to look up SOTA reference' })
+  }
+})
+
 // Get all alerts
-app.get('/api/alerts', requireAuth, async (req, res) => {
+app.get('/data/api/alerts', requireAuth, async (req, res) => {
   try {
     const alerts = await prisma.alert.findMany({
       orderBy: { datetime: 'desc' },
@@ -141,9 +346,353 @@ app.get('/api/alerts', requireAuth, async (req, res) => {
   }
 })
 
+// Get database statistics
+app.get('/data/api/statistics', requireAuth, async (req, res) => {
+  try {
+    // Get activator statistics
+    const totalActivations = await prisma.activatorLog.count()
+    const uniqueActivators = await prisma.activatorLog.groupBy({
+      by: ['activatedby'],
+    })
+    const uniqueActivatedSummits = await prisma.activatorLog.groupBy({
+      by: ['wotaid'],
+    })
+
+    // Get chaser statistics
+    const totalChases = await prisma.chaserLog.count()
+    const uniqueChasers = await prisma.chaserLog.groupBy({
+      by: ['wkdby'],
+    })
+    const uniqueChasedSummits = await prisma.chaserLog.groupBy({
+      by: ['wotaid'],
+    })
+
+    // Get total summits
+    const totalSummits = await prisma.summit.count()
+
+    // Get 5 most recently activated summits
+    const recentActivations = await prisma.activatorLog.findMany({
+      orderBy: { date: 'desc' },
+      take: 5,
+      select: {
+        wotaid: true,
+        date: true,
+      },
+      distinct: ['wotaid'],
+    })
+
+    // Get summit details for the recent activations
+    const recentSummits = await Promise.all(
+      recentActivations.map(async (activation) => {
+        const summit = await prisma.summit.findUnique({
+          where: { wotaid: activation.wotaid },
+          select: { wotaid: true, name: true },
+        })
+        return {
+          wotaid: activation.wotaid,
+          name: summit?.name || `Summit ${activation.wotaid}`,
+          date: activation.date,
+        }
+      })
+    )
+
+    // Get recent activity dates
+    const recentActivation = await prisma.activatorLog.findFirst({
+      orderBy: { date: 'desc' },
+      select: { date: true },
+    })
+
+    const recentChase = await prisma.chaserLog.findFirst({
+      orderBy: { date: 'desc' },
+      select: { date: true },
+    })
+
+    res.json({
+      activations: {
+        total: totalActivations,
+        uniqueActivators: uniqueActivators.length,
+        uniqueSummits: uniqueActivatedSummits.length,
+        lastActivity: recentActivation?.date || null,
+      },
+      chases: {
+        total: totalChases,
+        uniqueChasers: uniqueChasers.length,
+        uniqueSummits: uniqueChasedSummits.length,
+        lastActivity: recentChase?.date || null,
+      },
+      summits: {
+        total: totalSummits,
+        recentActivations: recentSummits,
+      },
+    })
+  } catch (error) {
+    console.error('Error fetching statistics:', error)
+    res.status(500).json({ error: 'Failed to fetch statistics' })
+  }
+})
+
+// Get user-specific statistics
+app.get('/data/api/statistics/user', requireAuth, async (req, res) => {
+  try {
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    // Get activator statistics for this user (ucall)
+    const totalActivations = await prisma.activatorLog.count({
+      where: { ucall: userCallsign }
+    })
+    const uniqueActivatedSummits = await prisma.activatorLog.groupBy({
+      by: ['wotaid'],
+      where: { ucall: userCallsign }
+    })
+
+    // Get chaser statistics for this user (ucall)
+    const totalChases = await prisma.chaserLog.count({
+      where: { ucall: userCallsign }
+    })
+    const uniqueChasedSummits = await prisma.chaserLog.groupBy({
+      by: ['wotaid'],
+      where: { ucall: userCallsign }
+    })
+
+    // Get recent activity dates for this user
+    const recentActivation = await prisma.activatorLog.findFirst({
+      where: { ucall: userCallsign },
+      orderBy: { date: 'desc' },
+      select: { date: true },
+    })
+
+    const recentChase = await prisma.chaserLog.findFirst({
+      where: { ucall: userCallsign },
+      orderBy: { date: 'desc' },
+      select: { date: true },
+    })
+
+    res.json({
+      callsign: userCallsign,
+      activations: {
+        total: totalActivations,
+        uniqueSummits: uniqueActivatedSummits.length,
+        lastActivity: recentActivation?.date || null,
+      },
+      chases: {
+        total: totalChases,
+        uniqueSummits: uniqueChasedSummits.length,
+        lastActivity: recentChase?.date || null,
+      },
+    })
+  } catch (error) {
+    console.error('Error fetching user statistics:', error)
+    res.status(500).json({ error: 'Failed to fetch user statistics' })
+  }
+})
+
+// Export activator log as CSV
+app.get('/data/api/export/activator', requireAuth, async (req, res) => {
+  try {
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    // Parse query parameters
+    const callsignsParam = req.query.callsigns as string | undefined
+    const yearParam = req.query.year as string | undefined
+
+    console.log('Export activator - callsignsParam:', callsignsParam)
+    console.log('Export activator - yearParam:', yearParam)
+
+    // Build dynamic where clause
+    const whereClause: any = {}
+
+    // Add callsign filter - ONLY match on ucall column
+    if (callsignsParam) {
+      const callsigns = callsignsParam.split(',').map(c => c.trim().toUpperCase()).filter(c => c)
+      console.log('Export activator - parsed callsigns:', callsigns)
+      if (callsigns.length > 0) {
+        // Match ONLY on ucall field
+        whereClause.ucall = { in: callsigns }
+      }
+    } else {
+      // If no callsigns specified, default to the logged-in user's callsign
+      whereClause.ucall = userCallsign
+    }
+
+    // Add year filter
+    if (yearParam) {
+      const year = parseInt(yearParam, 10)
+      if (!isNaN(year) && year >= 1900 && year <= 2099) {
+        whereClause.year = year
+      }
+    }
+
+    console.log('Export activator - whereClause:', JSON.stringify(whereClause, null, 2))
+
+    // Filter logs by user's callsign (ucall field) and optional filters
+    const logs = await prisma.activatorLog.findMany({
+      where: whereClause,
+      orderBy: { date: 'desc' },
+    })
+
+    console.log('Export activator - found', logs.length, 'logs')
+
+    // Create CSV header
+    const headers = [
+      'ID',
+      'Activated By',
+      'Call Used',
+      'WOTA ID',
+      'Date',
+      'Time',
+      'Year',
+      'Station Call',
+      'Your Call',
+      'RPT',
+      'S2S',
+      'Confirmed',
+      'Band',
+      'Frequency',
+      'Mode',
+    ]
+
+    // Create CSV rows
+    const rows = logs.map((log) => [
+      log.id,
+      log.activatedby,
+      log.callused,
+      log.wotaid,
+      log.date.toISOString().split('T')[0],
+      log.time ? log.time.toISOString().split('T')[1].split('.')[0] : '',
+      log.year,
+      log.stncall,
+      log.ucall,
+      log.rpt ?? '',
+      log.s2s ?? '',
+      log.confirmed ?? '',
+      log.band ?? '',
+      log.frequency ?? '',
+      log.mode ?? '',
+    ])
+
+    // Combine header and rows
+    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n')
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', `attachment; filename=${userCallsign}_activator_log.csv`)
+    res.send(csv)
+  } catch (error) {
+    console.error('Error exporting activator log:', error)
+    res.status(500).json({ error: 'Failed to export activator log' })
+  }
+})
+
+// Export chaser log as CSV
+app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
+  try {
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    // Parse query parameters
+    const callsignsParam = req.query.callsigns as string | undefined
+    const yearParam = req.query.year as string | undefined
+
+    console.log('Export chaser - callsignsParam:', callsignsParam)
+    console.log('Export chaser - yearParam:', yearParam)
+
+    // Build dynamic where clause
+    const whereClause: any = {}
+
+    // Add callsign filter - ONLY match on ucall column
+    if (callsignsParam) {
+      const callsigns = callsignsParam.split(',').map(c => c.trim().toUpperCase()).filter(c => c)
+      console.log('Export chaser - parsed callsigns:', callsigns)
+      if (callsigns.length > 0) {
+        // Match ONLY on ucall field
+        whereClause.ucall = { in: callsigns }
+      }
+    } else {
+      // If no callsigns specified, default to the logged-in user's callsign
+      whereClause.ucall = userCallsign
+    }
+
+    // Add year filter
+    if (yearParam) {
+      const year = parseInt(yearParam, 10)
+      if (!isNaN(year) && year >= 1900 && year <= 2099) {
+        whereClause.year = year
+      }
+    }
+
+    console.log('Export chaser - whereClause:', JSON.stringify(whereClause, null, 2))
+
+    // Filter logs by user's callsign (ucall field) and optional filters
+    const logs = await prisma.chaserLog.findMany({
+      where: whereClause,
+      orderBy: { date: 'desc' },
+    })
+
+    console.log('Export chaser - found', logs.length, 'logs')
+
+    // Create CSV header
+    const headers = [
+      'ID',
+      'Worked By',
+      'Unique Call',
+      'WOTA ID',
+      'Date',
+      'Time',
+      'Year',
+      'Station Call',
+      'RPT',
+      'Points',
+      'WAW Points',
+      'Points Year',
+      'WAW Points Year',
+      'Confirmed',
+    ]
+
+    // Create CSV rows
+    const rows = logs.map((log) => [
+      log.id,
+      log.wkdby,
+      log.ucall,
+      log.wotaid,
+      log.date.toISOString().split('T')[0],
+      log.time ? log.time.toISOString().split('T')[1].split('.')[0] : '',
+      log.year,
+      log.stncall,
+      log.rpt ?? '',
+      log.points,
+      log.wawpoints,
+      log.points_yr,
+      log.wawpoints_yr,
+      log.confirmed ?? '',
+    ])
+
+    // Combine header and rows
+    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n')
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', `attachment; filename=${userCallsign}_chaser_log.csv`)
+    res.send(csv)
+  } catch (error) {
+    console.error('Error exporting chaser log:', error)
+    res.status(500).json({ error: 'Failed to export chaser log' })
+  }
+})
+
 // Example CMS database query
 // This demonstrates how to query the CMS database
-app.get('/api/cms/test', async (req, res) => {
+app.get('/data/api/cms/test', async (req, res) => {
   try {
     const cmsDb = getCmsDb()
     // Example query - adjust table name and columns as needed
@@ -166,6 +715,17 @@ process.on('SIGTERM', async () => {
   process.exit(0)
 })
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`)
+})
+
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`\n❌ Error: Port ${PORT} is already in use`)
+    console.error(`   Please stop the other process or use a different port\n`)
+    process.exit(1)
+  } else {
+    console.error(`\n❌ Server error:`, error.message, '\n')
+    process.exit(1)
+  }
 })

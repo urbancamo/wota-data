@@ -7,6 +7,7 @@ import { VantResolver } from '@vant/auto-import-resolver'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/data/',
   plugins: [
     vue(),
     Components({
@@ -20,7 +21,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': {
+      '/data/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
