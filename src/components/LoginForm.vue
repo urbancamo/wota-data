@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { showNotify } from 'vant'
 import { useAuth } from '../composables/useAuth'
 import backgroundImage from '../assets/images/login-background.png'
 
@@ -9,13 +8,14 @@ const { login, error } = useAuth()
 const username = ref('')
 const password = ref('')
 const isLoading = ref(false)
+const errorMessage = ref('')
 
 async function handleLogin() {
+  // Clear previous error
+  errorMessage.value = ''
+
   if (!username.value || !password.value) {
-    showNotify({
-      type: 'warning',
-      message: 'Please enter username and password',
-    })
+    errorMessage.value = 'Please enter username and password'
     return
   }
 
@@ -24,29 +24,14 @@ async function handleLogin() {
   try {
     const success = await login(username.value, password.value)
 
-    if (success) {
-      showNotify({
-        type: 'success',
-        message: 'Login successful',
-      })
-    } else {
-      const errorMessage = error.value || 'Login failed'
-      console.error('Login failed:', errorMessage)
-      showNotify({
-        type: 'danger',
-        message: errorMessage,
-        duration: 5000,
-      })
+    if (!success) {
+      errorMessage.value = error.value || 'Login failed'
+      console.error('Login failed:', errorMessage.value)
     }
   } catch (err) {
     // Catch any errors not handled by useAuth
-    const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
-    console.error('Login error:', errorMessage)
-    showNotify({
-      type: 'danger',
-      message: errorMessage,
-      duration: 5000,
-    })
+    errorMessage.value = err instanceof Error ? err.message : 'An unexpected error occurred'
+    console.error('Login error:', errorMessage.value)
   } finally {
     isLoading.value = false
   }
@@ -82,6 +67,10 @@ async function handleLogin() {
             autocomplete="current-password"
           />
         </van-cell-group>
+
+        <div v-if="errorMessage" class="error-message">
+          {{ errorMessage }}
+        </div>
 
         <div class="login-button-wrapper">
           <van-button
@@ -137,6 +126,18 @@ async function handleLogin() {
   margin: 0;
   font-size: 14px;
   color: #666;
+}
+
+.error-message {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #fff1f0;
+  border: 1px solid #ffccc7;
+  border-radius: 8px;
+  color: #cf1322;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .login-button-wrapper {
