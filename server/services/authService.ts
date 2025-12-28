@@ -8,30 +8,62 @@ export interface User {
   expires: Date | null
 }
 
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    public code: 'USER_NOT_FOUND' | 'INVALID_PASSWORD' | 'DATABASE_TIMEOUT' | 'DATABASE_ERROR'
+  ) {
+    super(message)
+    this.name = 'AuthError'
+  }
+}
+
 export class AuthService {
   // Verify credentials against CMS database
-  async verifyCredentials(username: string, password: string): Promise<User | null> {
+  async verifyCredentials(username: string, password: string): Promise<User> {
     const cmsDb = getCmsDb()
 
-    // Hash password with MD5
-    const hashedPassword = crypto.createHash('md5').update(password).digest('hex')
+    try {
+      // First, check if username exists (case-insensitive)
+      const [userRows] = await Promise.race([
+        cmsDb.query<any[]>(
+          'SELECT id, username, password, createdate, expires FROM cms_module_feusers_users WHERE LOWER(username) = LOWER(?)',
+          [username]
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Database timeout')), 10000)
+        )
+      ])
 
-    // Query CMS database
-    const [rows] = await cmsDb.query<any[]>(
-      'SELECT id, username, createdate, expires FROM cms_module_feusers_users WHERE username = ? AND password = ?',
-      [username, hashedPassword]
-    )
+      if (userRows.length === 0) {
+        throw new AuthError('Username not recognized', 'USER_NOT_FOUND')
+      }
 
-    if (rows.length === 0) {
-      return null
-    }
+      const user = userRows[0]
 
-    const user = rows[0]
-    return {
-      id: user.id,
-      username: user.username,
-      createdate: user.createdate,
-      expires: user.expires
+      // Hash password with MD5
+      const hashedPassword = crypto.createHash('md5').update(password).digest('hex')
+
+      // Check if password matches
+      if (user.password !== hashedPassword) {
+        throw new AuthError('Password is incorrect', 'INVALID_PASSWORD')
+      }
+
+      // Return user data (without password)
+      return {
+        id: user.id,
+        username: user.username,
+        createdate: user.createdate,
+        expires: user.expires
+      }
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error
+      }
+      if (error instanceof Error && error.message === 'Database timeout') {
+        throw new AuthError('Database connection timeout', 'DATABASE_TIMEOUT')
+      }
+      throw new AuthError('Database error occurred', 'DATABASE_ERROR')
     }
   }
 

@@ -145,6 +145,11 @@ function formatTime(time: Date | string | null): string {
   return t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
+function formatFrequency(frequency: number | null): string {
+  if (!frequency) return '-'
+  return frequency.toFixed(3)
+}
+
 onMounted(() => {
   // Calculate initial page size
   setTimeout(() => {
@@ -224,7 +229,7 @@ onUnmounted(() => {
                 <td class="summit-name">{{ contact.summitName || 'Unknown' }}</td>
                 <template v-if="contactType === 'activator'">
                   <td>{{ contact.band || '-' }}</td>
-                  <td>{{ contact.frequency || '-' }}</td>
+                  <td>{{ formatFrequency(contact.frequency) }}</td>
                   <td>{{ contact.mode || '-' }}</td>
                   <td class="s2s-cell">
                     <van-tag v-if="contact.s2s" type="success">S2S</van-tag>

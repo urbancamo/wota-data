@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { showNotify, showLoadingToast, closeToast, showDialog, showActionSheet, type ActionSheetAction } from 'vant'
+import { showNotify, showLoadingToast, closeToast, showDialog, type ActionSheetAction } from 'vant'
 import AuthGuard from './components/AuthGuard.vue'
 import LogoutButton from './components/LogoutButton.vue'
 import ButtonBar from './components/ButtonBar.vue'
@@ -220,4 +220,28 @@ async function handleConfirmImport() {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Ensure notification text is visible */
+.van-notify {
+  font-size: 14px;
+  font-weight: 500;
+  --van-notify-text-color: darkred;
+}
+
+.van-notify--danger {
+  background-color: white;
+  color: var(--van-notify-text-color);
+}
+
+.van-notify--warning {
+  background-color: white;
+  color: orangered;
+}
+
+.van-notify--success {
+  background-color: white;
+  color: darkgreen;
+}
+
 </style>

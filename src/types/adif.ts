@@ -14,6 +14,7 @@ export interface AdifRecord {
   my_sig?: string
   my_sig_info?: string
   my_sota_ref?: string
+  sota_ref?: string
   [key: string]: string | undefined // Allow any other ADIF fields
 }
 

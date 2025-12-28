@@ -18,8 +18,18 @@ export async function parseAdifFile(file: File): Promise<ParsedAdif> {
         const content = event.target?.result as string
         const parsed = AdifParser.parseAdi(content)
 
-        const records: AdifRecord[] = parsed.records || []
+        let records: AdifRecord[] = parsed.records || []
         const errors: ParseError[] = []
+
+        // Filter out invalid records (e.g., header parsed as record)
+        // Keep only records that have at minimum a CALL field
+        records = records.filter((record) => {
+          if (!record.call) {
+            console.log('Filtering out invalid record without CALL field:', record)
+            return false
+          }
+          return true
+        })
 
         // Convert SOTA references to WOTA references
         await convertSotaToWota(records)

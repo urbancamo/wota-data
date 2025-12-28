@@ -10,7 +10,7 @@ import session from 'express-session'
 import cookieParser from 'cookie-parser'
 import { prisma as realPrisma, getCmsDb, disconnectDatabases } from './db'
 import { createPrismaStub } from './db-stub'
-import { authService } from './services/authService'
+import { authService, AuthError } from './services/authService'
 import { requireAuth } from './middleware/authMiddleware'
 
 // Load environment variables
@@ -27,7 +27,7 @@ if (STUB_DB) {
 const prisma = STUB_DB ? createPrismaStub(realPrisma) : realPrisma
 
 const app = express()
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 3003
 
 // Middleware
 app.use(cors({
@@ -65,10 +65,6 @@ app.post('/data/api/auth/login', async (req, res) => {
     // Verify credentials
     const user = await authService.verifyCredentials(username, password)
 
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' })
-    }
-
     // Check if account is expired
     if (authService.isUserExpired(user)) {
       return res.status(401).json({ error: 'Account has expired' })
@@ -87,6 +83,20 @@ app.post('/data/api/auth/login', async (req, res) => {
     })
   } catch (error) {
     console.error('Login error:', error)
+
+    if (error instanceof AuthError) {
+      switch (error.code) {
+        case 'USER_NOT_FOUND':
+          return res.status(401).json({ error: 'Username not recognized' })
+        case 'INVALID_PASSWORD':
+          return res.status(401).json({ error: 'Password is incorrect' })
+        case 'DATABASE_TIMEOUT':
+          return res.status(504).json({ error: 'Database connection timeout. Please try again.' })
+        case 'DATABASE_ERROR':
+          return res.status(500).json({ error: 'Database error occurred. Please try again later.' })
+      }
+    }
+
     res.status(500).json({ error: 'Login failed' })
   }
 })

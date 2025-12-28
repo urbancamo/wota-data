@@ -31,21 +31,48 @@ export interface SessionResponse {
 
 export const apiClient = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify(credentials),
-    })
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(credentials),
+      })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Login failed')
+      if (!response.ok) {
+        // Handle specific HTTP status codes
+        if (response.status === 404) {
+          throw new Error('Server not found. Please check your connection.')
+        }
+
+        if (response.status === 504) {
+          throw new Error('Database connection timeout. Please try again.')
+        }
+
+        // Try to get error message from response
+        let errorMessage = 'Login failed'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      return response.json()
+    } catch (error) {
+      // Handle network errors (server unreachable)
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Unable to reach server. Please check your connection.')
+      }
+      // Re-throw other errors
+      throw error
     }
-
-    return response.json()
   },
 
   async logout(): Promise<void> {

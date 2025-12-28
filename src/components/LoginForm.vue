@@ -30,11 +30,23 @@ async function handleLogin() {
         message: 'Login successful',
       })
     } else {
+      const errorMessage = error.value || 'Login failed'
+      console.error('Login failed:', errorMessage)
       showNotify({
         type: 'danger',
-        message: error.value || 'Login failed',
+        message: errorMessage,
+        duration: 5000,
       })
     }
+  } catch (err) {
+    // Catch any errors not handled by useAuth
+    const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
+    console.error('Login error:', errorMessage)
+    showNotify({
+      type: 'danger',
+      message: errorMessage,
+      duration: 5000,
+    })
   } finally {
     isLoading.value = false
   }
@@ -131,4 +143,5 @@ async function handleLogin() {
   margin-top: 24px;
   padding: 0 16px;
 }
+
 </style>

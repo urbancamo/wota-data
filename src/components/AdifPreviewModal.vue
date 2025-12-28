@@ -416,13 +416,13 @@ function getSummitName(record: AdifRecord, index: number): string {
 function getS2sReference(record: AdifRecord): string {
   if (!record.sig_info) return '-'
 
-  // Try to parse and format as WOTA reference
-  const wotaId = parseWotaReference(record.sig_info)
+  // Extract wotaId from sig_info (handles both formatted refs and plain numbers)
+  const wotaId = extractWotaId(record.sig_info)
   if (wotaId !== null) {
     return formatWotaReference(wotaId)
   }
 
-  // Return the raw reference if it can't be parsed as WOTA
+  // Return the raw reference if it can't be parsed
   return record.sig_info
 }
 
@@ -430,8 +430,8 @@ function getS2sReference(record: AdifRecord): string {
 function getS2sSummitName(record: AdifRecord): string {
   if (!record.sig_info) return ''
 
-  // Try to parse as WOTA reference
-  const wotaId = parseWotaReference(record.sig_info)
+  // Extract wotaId from sig_info (handles both formatted refs and plain numbers)
+  const wotaId = extractWotaId(record.sig_info)
   if (wotaId === null) return ''
 
   // Look up summit name
@@ -698,7 +698,9 @@ function getS2sSummitName(record: AdifRecord): string {
 }
 
 .s2s-reference {
-  font-weight: 500;
+  font-weight: 600;
+  color: #1989fa;
+  font-family: monospace;
 }
 
 .summit-input-wrapper {
