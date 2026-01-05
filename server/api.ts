@@ -12,6 +12,8 @@ import { prisma as realPrisma, getCmsDb, disconnectDatabases } from './db'
 import { createPrismaStub } from './db-stub'
 import { authService, AuthError } from './services/authService'
 import { requireAuth } from './middleware/authMiddleware'
+import { logger } from './logger'
+import { loggingMiddleware } from './middleware/loggingMiddleware'
 
 // Load environment variables
 dotenv.config()
@@ -20,7 +22,7 @@ dotenv.config()
 const STUB_DB = process.argv.includes('--stub-db') || process.argv.includes('--dry-run')
 
 if (STUB_DB) {
-  console.log('🔧 STUB MODE ENABLED - Mutations will be logged (not executed), reads will execute normally')
+  logger.info('🔧 STUB MODE ENABLED - Mutations will be logged (not executed), reads will execute normally')
 }
 
 // Use stubbed or real Prisma based on flag
@@ -47,6 +49,9 @@ app.use(session({
     sameSite: 'lax'
   }
 }))
+
+// Logging middleware
+app.use(loggingMiddleware(logger))
 
 // Health check endpoint
 app.get('/data/api/health', (req, res) => {
@@ -82,7 +87,7 @@ app.post('/data/api/auth/login', async (req, res) => {
       }
     })
   } catch (error) {
-    console.error('Login error:', error)
+    logger.error({ error, path: req.path, method: req.method }, 'Login error')
 
     if (error instanceof AuthError) {
       switch (error.code) {
@@ -104,7 +109,7 @@ app.post('/data/api/auth/login', async (req, res) => {
 app.post('/data/api/auth/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
-      console.error('Logout error:', err)
+      logger.error({ error: err, path: req.path, method: req.method }, 'Logout error')
       return res.status(500).json({ error: 'Logout failed' })
     }
     res.clearCookie('connect.sid')
@@ -185,7 +190,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
         })
 
         if (existing) {
-          console.log(`Skipping duplicate record ${i}: ${record.callused} -> ${record.stncall} on ${recordDate.toISOString().split('T')[0]}`)
+          logger.info({ recordIndex: i, callused: record.callused, stncall: record.stncall, date: recordDate.toISOString().split('T')[0] }, 'Skipping duplicate record')
           skipped++
           continue
         }
@@ -212,7 +217,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
 
         results.push(result)
       } catch (error) {
-        console.error(`Error importing record ${i}:`, error)
+        logger.error({ error, recordIndex: i, record }, 'Error importing record')
         errors.push({
           record: i,
           reason: error instanceof Error ? error.message : 'Unknown error'
@@ -228,7 +233,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
-    console.error('Import error:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Import error')
     res.status(500).json({ error: 'Import failed' })
   }
 })
@@ -309,7 +314,7 @@ app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
       possibleDuplicates: possibleDuplicateFlags
     })
   } catch (error) {
-    console.error('Duplicate check error:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Duplicate check error')
     res.status(500).json({ error: 'Duplicate check failed' })
   }
 })
@@ -323,7 +328,7 @@ app.get('/data/api/spots', requireAuth, async (req, res) => {
     })
     res.json(spots)
   } catch (error) {
-    console.error('Error fetching spots:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching spots')
     res.status(500).json({ error: 'Failed to fetch spots' })
   }
 })
@@ -336,7 +341,7 @@ app.get('/data/api/summits', requireAuth, async (req, res) => {
     })
     res.json(summits)
   } catch (error) {
-    console.error('Error fetching summits:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching summits')
     res.status(500).json({ error: 'Failed to fetch summits' })
   }
 })
@@ -345,19 +350,19 @@ app.get('/data/api/summits', requireAuth, async (req, res) => {
 app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
   try {
     const sotaRef = req.params.reference.toUpperCase()
-    console.log(`Looking up SOTA reference: ${sotaRef}`)
+    logger.info({ sotaRef }, 'Looking up SOTA reference')
 
     // Parse SOTA reference (e.g., "G/LD-014" -> "014")
     // SOTA references for Lake District start with G/LD-
     const match = sotaRef.match(/^G\/LD-(\d+)$/)
     if (!match) {
-      console.log(`Invalid SOTA reference format: ${sotaRef}`)
+      logger.info({ sotaRef }, 'Invalid SOTA reference format')
       return res.status(400).json({ error: 'Invalid SOTA reference format' })
     }
 
     const sotaNumber = match[1] // e.g., "014"
     const sotaId = parseInt(sotaNumber, 10) // Convert to integer: 14
-    console.log(`Parsed SOTA number: ${sotaNumber} -> sotaid: ${sotaId}`)
+    logger.info({ sotaNumber, sotaId }, 'Parsed SOTA number')
 
     const summit = await prisma.summit.findFirst({
       where: {
@@ -366,14 +371,14 @@ app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
     })
 
     if (!summit) {
-      console.log(`Summit not found for SOTA reference: ${sotaRef} (sotaid: ${sotaId})`)
+      logger.info({ sotaRef, sotaId }, 'Summit not found for SOTA reference')
       return res.status(404).json({ error: 'Summit not found for SOTA reference' })
     }
 
-    console.log(`Found summit: ${summit.name} (wotaid: ${summit.wotaid})`)
+    logger.info({ summitName: summit.name, wotaid: summit.wotaid }, 'Found summit')
     res.json(summit)
   } catch (error) {
-    console.error('Error looking up SOTA reference:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error looking up SOTA reference')
     res.status(500).json({ error: 'Failed to look up SOTA reference' })
   }
 })
@@ -387,7 +392,7 @@ app.get('/data/api/alerts', requireAuth, async (req, res) => {
     })
     res.json(alerts)
   } catch (error) {
-    console.error('Error fetching alerts:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching alerts')
     res.status(500).json({ error: 'Failed to fetch alerts' })
   }
 })
@@ -474,7 +479,7 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
       },
     })
   } catch (error) {
-    console.error('Error fetching statistics:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching statistics')
     res.status(500).json({ error: 'Failed to fetch statistics' })
   }
 })
@@ -550,7 +555,7 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
       availableYears,
     })
   } catch (error) {
-    console.error('Error fetching activator contacts:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching activator contacts')
     res.status(500).json({ error: 'Failed to fetch contacts' })
   }
 })
@@ -626,7 +631,7 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
       availableYears,
     })
   } catch (error) {
-    console.error('Error fetching chaser contacts:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching chaser contacts')
     res.status(500).json({ error: 'Failed to fetch contacts' })
   }
 })
@@ -685,7 +690,7 @@ app.get('/data/api/statistics/user', requireAuth, async (req, res) => {
       },
     })
   } catch (error) {
-    console.error('Error fetching user statistics:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching user statistics')
     res.status(500).json({ error: 'Failed to fetch user statistics' })
   }
 })
@@ -712,8 +717,7 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
     const callsignsParam = req.query.callsigns as string | undefined
     const yearParam = req.query.year as string | undefined
 
-    console.log('Export activator - callsignsParam:', callsignsParam)
-    console.log('Export activator - yearParam:', yearParam)
+    logger.info({ callsignsParam, yearParam }, 'Export activator - query parameters')
 
     // Build dynamic where clause
     const whereClause: any = {}
@@ -721,7 +725,7 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
     // Add callsign filter - ONLY match on ucall column
     if (callsignsParam) {
       const callsigns = callsignsParam.split(',').map(c => c.trim().toUpperCase()).filter(c => c)
-      console.log('Export activator - parsed callsigns:', callsigns)
+      logger.info({ callsigns }, 'Export activator - parsed callsigns')
       if (callsigns.length > 0) {
         // Match ONLY on ucall field
         whereClause.activatedby = { in: callsigns }
@@ -739,7 +743,7 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
       }
     }
 
-    console.log('Export activator - whereClause:', JSON.stringify(whereClause, null, 2))
+    logger.info({ whereClause }, 'Export activator - where clause')
 
     // Filter logs by user's callsign (ucall field) and optional filters
     const logs = await prisma.activatorLog.findMany({
@@ -747,7 +751,7 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
       orderBy: { date: 'desc' },
     })
 
-    console.log('Export activator - found', logs.length, 'logs')
+    logger.info({ count: logs.length }, 'Export activator - found logs')
 
     // Get summit names for all unique WOTA IDs
     const uniqueWotaIds = [...new Set(logs.map(log => log.wotaid))]
@@ -805,7 +809,7 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=${userCallsign}_activator_log.csv`)
     res.send(csv)
   } catch (error) {
-    console.error('Error exporting activator log:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error exporting activator log')
     res.status(500).json({ error: 'Failed to export activator log' })
   }
 })
@@ -823,8 +827,7 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
     const callsignsParam = req.query.callsigns as string | undefined
     const yearParam = req.query.year as string | undefined
 
-    console.log('Export chaser - callsignsParam:', callsignsParam)
-    console.log('Export chaser - yearParam:', yearParam)
+    logger.info({ callsignsParam, yearParam }, 'Export chaser - query parameters')
 
     // Build dynamic where clause
     const whereClause: any = {}
@@ -832,7 +835,7 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
     // Add callsign filter - ONLY match on ucall column
     if (callsignsParam) {
       const callsigns = callsignsParam.split(',').map(c => c.trim().toUpperCase()).filter(c => c)
-      console.log('Export chaser - parsed callsigns:', callsigns)
+      logger.info({ callsigns }, 'Export chaser - parsed callsigns')
       if (callsigns.length > 0) {
         // Match ONLY on ucall field
         whereClause.wkdby = { in: callsigns }
@@ -850,7 +853,7 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
       }
     }
 
-    console.log('Export chaser - whereClause:', JSON.stringify(whereClause, null, 2))
+    logger.info({ whereClause }, 'Export chaser - where clause')
 
     // Filter logs by user's callsign (ucall field) and optional filters
     const logs = await prisma.chaserLog.findMany({
@@ -858,7 +861,7 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
       orderBy: { date: 'desc' },
     })
 
-    console.log('Export chaser - found', logs.length, 'logs')
+    logger.info({ count: logs.length }, 'Export chaser - found logs')
 
     // Get summit names for all unique WOTA IDs
     const uniqueWotaIds = [...new Set(logs.map(log => log.wotaid))]
@@ -914,7 +917,7 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=${userCallsign}_chaser_log.csv`)
     res.send(csv)
   } catch (error) {
-    console.error('Error exporting chaser log:', error)
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error exporting chaser log')
     res.status(500).json({ error: 'Failed to export chaser log' })
   }
 })
@@ -928,7 +931,7 @@ app.get('/data/api/cms/test', async (req, res) => {
     const [rows] = await cmsDb.query('SELECT 1 as test')
     res.json({ status: 'CMS database connected', data: rows })
   } catch (error) {
-    console.error('Error querying CMS database:', error)
+    logger.error({ error, path: req.path, method: req.method }, 'Error querying CMS database')
     res.status(500).json({ error: 'Failed to query CMS database' })
   }
 })
@@ -945,16 +948,15 @@ process.on('SIGTERM', async () => {
 })
 
 const server = app.listen(PORT, () => {
-  console.log(`API server running on http://localhost:${PORT}`)
+  logger.info({ port: PORT }, `API server running on http://localhost:${PORT}`)
 })
 
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {
-    console.error(`\n❌ Error: Port ${PORT} is already in use`)
-    console.error(`   Please stop the other process or use a different port\n`)
+    logger.error({ port: PORT }, `Error: Port ${PORT} is already in use. Please stop the other process or use a different port`)
     process.exit(1)
   } else {
-    console.error(`\n❌ Server error:`, error.message, '\n')
+    logger.error({ error }, `Server error: ${error.message}`)
     process.exit(1)
   }
 })
