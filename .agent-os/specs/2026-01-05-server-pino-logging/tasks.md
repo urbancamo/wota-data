@@ -22,14 +22,14 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 2.5 Add logging middleware to Express app before route handlers
   - [x] 2.6 Verify all tests pass
 
-- [ ] 3. Replace console.log/error with pino logger
-  - [ ] 3.1 Replace console.log in health check and utility functions
-  - [ ] 3.2 Replace console.error in authentication endpoints with logger.error
-  - [ ] 3.3 Replace console.error in import endpoints with logger.error
-  - [ ] 3.4 Replace console.error in data fetch endpoints with logger.error
-  - [ ] 3.5 Replace console.log in SOTA lookup and exports with logger.info
-  - [ ] 3.6 Ensure error logs include stack traces and request context
-  - [ ] 3.7 Verify all tests pass
+- [x] 3. Replace console.log/error with pino logger
+  - [x] 3.1 Replace console.log in health check and utility functions
+  - [x] 3.2 Replace console.error in authentication endpoints with logger.error
+  - [x] 3.3 Replace console.error in import endpoints with logger.error
+  - [x] 3.4 Replace console.error in data fetch endpoints with logger.error
+  - [x] 3.5 Replace console.log in SOTA lookup and exports with logger.info
+  - [x] 3.6 Ensure error logs include stack traces and request context
+  - [x] 3.7 Verify all tests pass
 
 - [ ] 4. Verify and test complete implementation
   - [ ] 4.1 Start server and make authenticated API requests
