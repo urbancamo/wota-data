@@ -34,12 +34,12 @@ export function formatWotaReference(wotaid: number | null | undefined): string {
 export function parseWotaReference(reference: string): number | null {
   const ldwMatch = reference.match(/^LDW-(\d+)$/i)
   if (ldwMatch) {
-    return parseInt(ldwMatch[1], 10)
+    return parseInt(ldwMatch[1]!, 10)
   }
 
   const ldoMatch = reference.match(/^LDO-(\d+)$/i)
   if (ldoMatch) {
-    const ldoNumber = parseInt(ldoMatch[1], 10)
+    const ldoNumber = parseInt(ldoMatch[1]!, 10)
     return ldoNumber + 214
   }
 

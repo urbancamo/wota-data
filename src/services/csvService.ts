@@ -1,11 +1,5 @@
-import { parseWotaReference } from '../utils/wotaReference'
-import type {
-  ValidationResult,
-  ActivatorLogInput,
-  ParsedAdif,
-  ParseError,
-  ImportStatistics,
-} from '../types/adif'
+import {parseWotaReference} from '../utils/wotaReference'
+import type {ImportStatistics, ParsedAdif, ParseError,} from '../types/adif'
 
 interface CsvRecord {
   version: string
@@ -69,14 +63,14 @@ export async function parseCsvContent(content: string): Promise<ParsedAdif> {
     }
 
     records.push({
-      version: parts[0],
-      callsign: parts[1],
-      reference: parts[2],
-      date: parts[3],
-      time: parts[4],
-      frequency: parts[5],
-      mode: parts[6],
-      stationWorked: parts[7],
+      version: parts[0]!,
+      callsign: parts[1]!,
+      reference: parts[2]!,
+      date: parts[3]!,
+      time: parts[4]!,
+      frequency: parts[5]!,
+      mode: parts[6]!,
+      stationWorked: parts[7]!,
       s2sReference: parts[8] || undefined,  // Optional column 9
       comment: parts[9] || undefined,        // Optional column 10 (ignored)
     })
@@ -188,9 +182,9 @@ function parseDateToAdifFormat(dateStr: string): string {
     throw new Error(`Invalid date format: ${dateStr}`)
   }
 
-  const day = parts[0].padStart(2, '0')
-  const month = parts[1].padStart(2, '0')
-  let year = parts[2]
+  const day = parts[0]!.padStart(2, '0')
+  const month = parts[1]!.padStart(2, '0')
+  let year = parts[2]!
 
   // Handle 2-digit year
   if (year.length === 2) {
@@ -202,27 +196,6 @@ function parseDateToAdifFormat(dateStr: string): string {
   return `${year}${month}${day}`
 }
 
-function parseFrequency(freqStr: string): string {
-  // Convert "144MHz" to "144.000" (in MHz)
-  const match = freqStr.match(/^(\d+(?:\.\d+)?)\s*([MK]?Hz)?$/i)
-  if (!match) {
-    return '0'
-  }
-
-  const value = parseFloat(match[1])
-  const unit = match[2]?.toUpperCase() || 'MHZ'
-
-  if (unit === 'MHZ') {
-    return value.toFixed(3)
-  } else if (unit === 'KHZ') {
-    return (value / 1000).toFixed(3)
-  } else if (unit === 'HZ') {
-    return (value / 1000000).toFixed(3)
-  }
-
-  return value.toFixed(3)
-}
-
 function frequencyToBand(freqStr: string): string {
   // Convert frequency to band name
   const match = freqStr.match(/^(\d+(?:\.\d+)?)\s*([MK]?Hz)?$/i)
@@ -230,7 +203,7 @@ function frequencyToBand(freqStr: string): string {
     return ''
   }
 
-  const value = parseFloat(match[1])
+  const value = parseFloat(match[1]!)
   const unit = match[2]?.toUpperCase() || 'MHZ'
 
   let freqMhz = value
@@ -277,8 +250,7 @@ export function calculateStatistics(
   const summitIds = validRecords
     .map((r) => {
       if (!r.my_sig_info) return null
-      const wotaId = parseWotaReference(r.my_sig_info.toUpperCase())
-      return wotaId
+      return parseWotaReference(r.my_sig_info.toUpperCase())
     })
     .filter((id): id is number => id !== null)
 
@@ -289,8 +261,8 @@ export function calculateStatistics(
     dateRange:
       dates.length > 0
         ? {
-            start: formatAdifDate(dates[0]),
-            end: formatAdifDate(dates[dates.length - 1]),
+            start: formatAdifDate(dates[0]!),
+            end: formatAdifDate(dates[dates.length - 1]!),
           }
         : null,
     summits: uniqueSummits,

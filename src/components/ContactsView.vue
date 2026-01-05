@@ -15,7 +15,7 @@ const totalPages = ref(1)
 const totalRecords = ref(0)
 const pageSize = ref(20)
 const availableYears = ref<number[]>([])
-const selectedYear = ref<number | null>(null)
+const selectedYear = ref<number>(0)
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const containerRef = ref<HTMLElement | null>(null)
 const filterSectionRef = ref<HTMLElement | null>(null)
@@ -23,8 +23,8 @@ const paginationRef = ref<HTMLElement | null>(null)
 
 // Compute dropdown options for year filter
 const yearOptions = computed(() => {
-  const options = [
-    { text: 'All Years', value: null }
+  const options: Array<{ text: string; value: number }> = [
+    { text: 'All Years', value: 0 }
   ]
 
   availableYears.value.forEach(year => {
@@ -126,7 +126,7 @@ watch(sortOrder, () => {
 // Reload when contact type changes
 watch(() => props.contactType, () => {
   currentPage.value = 1
-  selectedYear.value = null
+  selectedYear.value = 0
   sortOrder.value = 'desc'
   loadContacts()
 })
