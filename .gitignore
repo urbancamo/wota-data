@@ -40,5 +40,5 @@ __screenshots__/
 .env.local
 .env.*.local
 
-# Nested scaffold folder (can be removed)
-/wota-adif/.pids/
+# Runtime logging folder
+/.pids/

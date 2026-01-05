@@ -17,8 +17,10 @@ const buttonBarRef = ref<InstanceType<typeof ButtonBar> | null>(null)
 const showActions = ref(false)
 
 const actions: ActionSheetAction[] = [
-  { name: 'Import ADIF', subname: 'Import contacts from ADIF file' },
-  { name: 'Import CSV', subname: 'Import contacts from CSV file' },
+  { name: 'Import Activator ADIF', subname: 'Import activator contacts from ADIF file' },
+  { name: 'Import Activator CSV', subname: 'Import activator contacts from CSV file' },
+  { name: 'Import Chaser ADIF', subname: 'Import chaser contacts from ADIF file' },
+  { name: 'Import Chaser CSV', subname: 'Import chaser contacts from CSV file' },
   { name: 'Export Activator CSV', subname: 'Export activator contacts' },
   { name: 'Export Chaser CSV', subname: 'Export chaser contacts' },
 ]
@@ -30,15 +32,21 @@ function handleActionSelect(action: ActionSheetAction, index: number) {
 
   switch (index) {
     case 0:
-      buttonBarRef.value.handleImportAdifClick()
+      buttonBarRef.value.handleImportActivatorAdifClick()
       break
     case 1:
-      buttonBarRef.value.handleImportCsvClick()
+      buttonBarRef.value.handleImportActivatorCsvClick()
       break
     case 2:
-      buttonBarRef.value.handleExportActivatorClick()
+      buttonBarRef.value.handleImportChaserAdifClick()
       break
     case 3:
+      buttonBarRef.value.handleImportChaserCsvClick()
+      break
+    case 4:
+      buttonBarRef.value.handleExportActivatorClick()
+      break
+    case 5:
       buttonBarRef.value.handleExportChaserClick()
       break
   }
@@ -47,15 +55,18 @@ function handleActionSelect(action: ActionSheetAction, index: number) {
 const showPreview = ref(false)
 const parsedData = ref<ParsedAdif | null>(null)
 const statistics = ref<ImportStatistics | null>(null)
+const importErrors = ref<Array<{ record: number; reason: string }> | undefined>(undefined)
 
 function handleAdifParsed(data: ParsedAdif) {
   parsedData.value = data
   statistics.value = calculateStatistics(data.records, data.errors)
+  importErrors.value = undefined // Clear any previous import errors
   showPreview.value = true
 }
 
 function handlePreviewClose() {
   showPreview.value = false
+  importErrors.value = undefined // Clear errors when closing
 }
 
 async function handleConfirmImport() {
@@ -82,7 +93,19 @@ async function handleConfirmImport() {
     // Send to backend
     const result = await apiClient.importAdif(records)
 
-    // Close preview modal
+    // Check if there are errors
+    if (result.errors && result.errors.length > 0) {
+      // Keep modal open and pass errors for highlighting
+      importErrors.value = result.errors
+      showNotify({
+        type: 'danger',
+        message: `${result.errors.length} record${result.errors.length !== 1 ? 's' : ''} failed to import. Review highlighted records.`,
+        duration: 5000,
+      })
+      return
+    }
+
+    // Close preview modal if no errors
     showPreview.value = false
 
     // Build result message for dialog
@@ -183,6 +206,7 @@ async function handleConfirmImport() {
       <AdifPreviewModal
         :show="showPreview"
         :parsed-data="parsedData"
+        :import-errors="importErrors"
         @close="handlePreviewClose"
         @confirm="handleConfirmImport"
       />

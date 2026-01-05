@@ -16,17 +16,27 @@ const emit = defineEmits<{
 
 const adifFileInput = ref<HTMLInputElement | null>(null)
 const csvFileInput = ref<HTMLInputElement | null>(null)
+const chaserAdifFileInput = ref<HTMLInputElement | null>(null)
+const chaserCsvFileInput = ref<HTMLInputElement | null>(null)
 const isProcessing = ref(false)
 const isExporting = ref(false)
 const showExportFilter = ref(false)
 const exportType = ref<'activator' | 'chaser'>('activator')
 
-function handleImportAdifClick() {
+function handleImportActivatorAdifClick() {
   adifFileInput.value?.click()
 }
 
-function handleImportCsvClick() {
+function handleImportActivatorCsvClick() {
   csvFileInput.value?.click()
+}
+
+function handleImportChaserAdifClick() {
+  chaserAdifFileInput.value?.click()
+}
+
+function handleImportChaserCsvClick() {
+  chaserCsvFileInput.value?.click()
 }
 
 async function handleAdifFileSelect(event: Event) {
@@ -155,6 +165,46 @@ async function handleCsvFileSelect(event: Event) {
   }
 }
 
+async function handleChaserAdifFileSelect(event: Event) {
+  console.log('Chaser ADIF file select triggered')
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+
+  if (!file) {
+    console.log('No file selected')
+    return
+  }
+
+  // TODO: Implement chaser ADIF import
+  showNotify({
+    type: 'warning',
+    message: 'Chaser ADIF import not yet implemented',
+  })
+
+  // Reset file input
+  if (target) target.value = ''
+}
+
+async function handleChaserCsvFileSelect(event: Event) {
+  console.log('Chaser CSV file select triggered')
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+
+  if (!file) {
+    console.log('No file selected')
+    return
+  }
+
+  // TODO: Implement chaser CSV import
+  showNotify({
+    type: 'warning',
+    message: 'Chaser CSV import not yet implemented',
+  })
+
+  // Reset file input
+  if (target) target.value = ''
+}
+
 function handleExportActivatorClick() {
   exportType.value = 'activator'
   showExportFilter.value = true
@@ -203,8 +253,10 @@ async function handleFilterConfirm(filters: ExportFilters) {
 
 // Expose methods for parent component
 defineExpose({
-  handleImportAdifClick,
-  handleImportCsvClick,
+  handleImportActivatorAdifClick,
+  handleImportActivatorCsvClick,
+  handleImportChaserAdifClick,
+  handleImportChaserCsvClick,
   handleExportActivatorClick,
   handleExportChaserClick,
 })
@@ -228,20 +280,52 @@ defineExpose({
       @change="handleCsvFileSelect"
     />
 
+    <input
+      ref="chaserAdifFileInput"
+      type="file"
+      accept=".adi,.adif"
+      style="display: none"
+      @change="handleChaserAdifFileSelect"
+    />
+
+    <input
+      ref="chaserCsvFileInput"
+      type="file"
+      accept=".csv"
+      style="display: none"
+      @change="handleChaserCsvFileSelect"
+    />
+
     <van-button
       type="primary"
       :loading="isProcessing"
-      @click="handleImportAdifClick"
+      @click="handleImportActivatorAdifClick"
     >
-      Import ADIF
+      Import Activator ADIF
     </van-button>
 
     <van-button
       type="primary"
       :loading="isProcessing"
-      @click="handleImportCsvClick"
+      @click="handleImportActivatorCsvClick"
     >
-      Import CSV
+      Import Activator CSV
+    </van-button>
+
+    <van-button
+      type="primary"
+      :loading="isProcessing"
+      @click="handleImportChaserAdifClick"
+    >
+      Import Chaser ADIF
+    </van-button>
+
+    <van-button
+      type="primary"
+      :loading="isProcessing"
+      @click="handleImportChaserCsvClick"
+    >
+      Import Chaser CSV
     </van-button>
 
     <van-button

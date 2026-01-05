@@ -9,6 +9,7 @@ import {apiClient} from '../services/api'
 const props = defineProps<{
   parsedData: ParsedAdif | null
   show: boolean
+  importErrors?: Array<{ record: number; reason: string }>
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +39,7 @@ function updateWotaReference(index: number, value: string) {
   editableRecords.value.set(index, value)
 }
 
-function copyReferenceToSubsequent(fromIndex: number) {
+async function copyReferenceToSubsequent(fromIndex: number) {
   if (!props.parsedData) return
 
   const fromRecord = props.parsedData.records[fromIndex]
@@ -54,20 +55,47 @@ function copyReferenceToSubsequent(fromIndex: number) {
     return
   }
 
+  // Parse and validate the reference
+  let wotaId: number | null = null
+  wotaId = parseWotaReference(fromValue)
+  if (wotaId === null) {
+    wotaId = extractWotaId(fromValue)
+  }
+  if (wotaId === null) {
+    const parsed = parseInt(fromValue, 10)
+    if (!isNaN(parsed)) {
+      wotaId = parsed
+    }
+  }
+
+  if (wotaId === null) {
+    showNotify({
+      type: 'warning',
+      message: 'Invalid WOTA reference format',
+    })
+    return
+  }
+
+  // Format the reference properly
+  const formattedRef = formatWotaReference(wotaId)
+
   let copiedCount = 0
 
   // Copy to this field and all subsequent records without original WOTA references
   props.parsedData.records.forEach((record, index) => {
     if (index >= fromIndex && !hasOriginalSummit(record)) {
-      editableRecords.value.set(index, fromValue)
+      editableRecords.value.set(index, wotaId!.toString())
       copiedCount++
     }
   })
 
   showNotify({
     type: 'success',
-    message: `Copied "${fromValue}" to ${copiedCount} field${copiedCount !== 1 ? 's' : ''}`,
+    message: `Copied "${formattedRef}" to ${copiedCount} field${copiedCount !== 1 ? 's' : ''}`,
   })
+
+  // Re-check duplicates after copying
+  await checkDuplicates()
 }
 
 const hasMoreRecords = computed(() => {
@@ -90,6 +118,15 @@ const duplicateCount = computed(() => {
 
 const possibleDuplicateCount = computed(() => {
   return possibleDuplicateFlags.value.filter(d => d).length
+})
+
+const failedRecordIndices = computed(() => {
+  if (!props.importErrors) return new Set<number>()
+  return new Set(props.importErrors.map(e => e.record))
+})
+
+const failedCount = computed(() => {
+  return props.importErrors?.length || 0
 })
 
 function formatDate(adifDate?: string): string {
@@ -166,6 +203,13 @@ function hasOriginalSummit(record: AdifRecord): boolean {
   // my_sig_info is the activator's summit, sig_info is the contacted station's summit (S2S)
   const id = extractWotaId(record.my_sig_info || record.sig_info)
   return id !== null
+}
+
+function hasValidSummit(record: AdifRecord, index: number): boolean {
+  // Check if there's an original summit or a manually edited value
+  const hasOriginal = hasSummit(record)
+  const hasEdited = editableRecords.value.has(index) && editableRecords.value.get(index)
+  return hasOriginal || !!hasEdited
 }
 
 function isConvertedFromSota(record: AdifRecord): boolean {
@@ -367,11 +411,13 @@ function handleAutocompleteInput(index: number, value: string) {
 }
 
 // Select summit from autocomplete
-function selectSummit(index: number, summit: Summit) {
-  const formattedRef = formatWotaReference(summit.wotaid)
-  editableRecords.value.set(index, formattedRef)
+async function selectSummit(index: number, summit: Summit) {
+  editableRecords.value.set(index, summit.wotaid.toString())
   autocompleteActive.value = null
   autocompleteMatches.value = []
+
+  // Re-check duplicates after selection
+  await checkDuplicates()
 }
 
 // Close autocomplete
@@ -450,12 +496,15 @@ function getS2sSummitName(record: AdifRecord): string {
   >
     <div class="preview-container">
       <div class="preview-header">
-        <h3>Review Import</h3>
+        <h3>{{ failedCount > 0 ? 'Import Failed - Review Errors' : 'Review Import' }}</h3>
         <p class="record-count">
           {{ parsedData?.records.length || 0 }} QSO records found
           <span v-if="parsedData?.errors.length" class="error-count">
             ({{ parsedData.errors.length }} errors)
           </span>
+        </p>
+        <p v-if="failedCount > 0" class="import-error-summary">
+          {{ failedCount }} record{{ failedCount !== 1 ? 's' : '' }} failed to import. Please review the highlighted records below.
         </p>
       </div>
 
@@ -477,6 +526,7 @@ function getS2sSummitName(record: AdifRecord): string {
         <table class="preview-table">
           <thead>
             <tr>
+              <th>#</th>
               <th>Date</th>
               <th>Time</th>
               <th>Call</th>
@@ -492,16 +542,19 @@ function getS2sSummitName(record: AdifRecord): string {
               v-for="(record, index) in displayRecords"
               :key="index"
               :class="{
-                'missing-summit': !hasSummit(record),
+                'missing-summit': !hasValidSummit(record, index),
                 'duplicate-record': duplicateFlags[index],
-                'possible-duplicate-record': possibleDuplicateFlags[index] && !duplicateFlags[index]
+                'possible-duplicate-record': possibleDuplicateFlags[index] && !duplicateFlags[index],
+                'failed-record': failedRecordIndices.has(index)
               }"
             >
+              <td class="qso-number">{{ String(index + 1).padStart(4, '0') }}</td>
               <td>{{ formatDate(record.qso_date) }}</td>
               <td>{{ formatTime(record.time_on) }}</td>
               <td>
                 {{ record.call || '-' }}
-                <span v-if="duplicateFlags[index]" class="duplicate-indicator" title="Duplicate record already exists in database">DUP</span>
+                <span v-if="failedRecordIndices.has(index)" class="failed-indicator" :title="importErrors?.find(e => e.record === index)?.reason || 'Import failed'">FAILED</span>
+                <span v-else-if="duplicateFlags[index]" class="duplicate-indicator" title="Duplicate record already exists in database">DUP</span>
                 <span v-else-if="possibleDuplicateFlags[index]" class="possible-duplicate-indicator" title="Possible duplicate - database record has no band/mode">?</span>
               </td>
               <td class="summit-cell">
@@ -566,8 +619,12 @@ function getS2sSummitName(record: AdifRecord): string {
         </div>
       </div>
 
-      <!-- Import warnings -->
-      <div v-if="recordsWithoutSummit > 0 || duplicateCount > 0 || possibleDuplicateCount > 0" class="import-warnings">
+      <!-- Import warnings and errors -->
+      <div v-if="recordsWithoutSummit > 0 || duplicateCount > 0 || possibleDuplicateCount > 0 || failedCount > 0" class="import-warnings">
+        <div v-if="failedCount > 0" class="warning-item failed-warning">
+          <van-icon name="close-o" />
+          <span>{{ failedCount }} record{{ failedCount !== 1 ? 's' : '' }} failed to import (see highlighted rows)</span>
+        </div>
         <div v-if="recordsWithoutSummit > 0" class="warning-item missing-warning">
           <van-icon name="warning-o" />
           <span>{{ recordsWithoutSummit }} record{{ recordsWithoutSummit !== 1 ? 's' : '' }} without valid WOTA reference will be skipped</span>
@@ -622,6 +679,13 @@ function getS2sSummitName(record: AdifRecord): string {
   margin: 0;
   font-size: 14px;
   color: #666;
+}
+
+.import-error-summary {
+  margin: 8px 0 0 0;
+  font-size: 14px;
+  color: #ee0a24;
+  font-weight: 500;
 }
 
 .error-count {
@@ -695,6 +759,13 @@ function getS2sSummitName(record: AdifRecord): string {
 
 .s2s-cell {
   min-width: 120px;
+}
+
+.qso-number {
+  font-family: monospace;
+  font-weight: 600;
+  color: #969799;
+  text-align: center;
 }
 
 .s2s-reference {
@@ -777,6 +848,31 @@ function getS2sSummitName(record: AdifRecord): string {
 
 .duplicate-record:hover {
   background-color: #ffe7e5;
+}
+
+.failed-record {
+  background-color: #ffe7e5;
+  border-left: 3px solid #ee0a24;
+}
+
+.failed-record:hover {
+  background-color: #ffd6d3;
+}
+
+.failed-indicator {
+  font-size: 9px;
+  font-weight: 600;
+  color: white;
+  background: #ee0a24;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: sans-serif;
+  letter-spacing: 0.5px;
+  margin-left: 6px;
+}
+
+.failed-warning {
+  color: #ee0a24;
 }
 
 .autocomplete-dropdown {
