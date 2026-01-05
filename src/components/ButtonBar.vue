@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { showNotify, showLoadingToast, closeToast } from 'vant'
+import { showNotify } from 'vant'
 import { parseAdifFile, calculateStatistics as calculateAdifStatistics } from '../services/adifService'
 import { parseCsvFile, calculateStatistics as calculateCsvStatistics } from '../services/csvService'
-import { apiClient, type ExportFilters } from '../services/api'
 import type { ParsedAdif } from '../types/adif'
-import ExportFilterDialog from './ExportFilterDialog.vue'
-import { useAuth } from '../composables/useAuth'
-
-const { username } = useAuth()
 
 const emit = defineEmits<{
   (e: 'adifParsed', data: ParsedAdif): void
@@ -19,9 +14,6 @@ const csvFileInput = ref<HTMLInputElement | null>(null)
 const chaserAdifFileInput = ref<HTMLInputElement | null>(null)
 const chaserCsvFileInput = ref<HTMLInputElement | null>(null)
 const isProcessing = ref(false)
-const isExporting = ref(false)
-const showExportFilter = ref(false)
-const exportType = ref<'activator' | 'chaser'>('activator')
 
 function handleImportActivatorAdifClick() {
   adifFileInput.value?.click()
@@ -205,60 +197,12 @@ async function handleChaserCsvFileSelect(event: Event) {
   if (target) target.value = ''
 }
 
-function handleExportActivatorClick() {
-  exportType.value = 'activator'
-  showExportFilter.value = true
-}
-
-function handleExportChaserClick() {
-  exportType.value = 'chaser'
-  showExportFilter.value = true
-}
-
-function handleFilterDialogClose() {
-  showExportFilter.value = false
-}
-
-async function handleFilterConfirm(filters: ExportFilters) {
-  showExportFilter.value = false
-  showLoadingToast({
-    message: 'Exporting...',
-    forbidClick: true,
-    duration: 0,
-  });
-  try {
-    isExporting.value = true
-
-    if (exportType.value === 'activator') {
-      await apiClient.exportActivatorCsv(filters)
-    } else {
-      await apiClient.exportChaserCsv(filters)
-    }
-
-    showNotify({
-      type: 'success',
-      message: `${exportType.value === 'activator' ? 'Activator' : 'Chaser'} log exported successfully`,
-    })
-  } catch (error) {
-    console.error('Export error:', error)
-    showNotify({
-      type: 'danger',
-      message: error instanceof Error ? error.message : 'Export failed',
-    })
-  } finally {
-    isExporting.value = false
-    closeToast()
-  }
-}
-
 // Expose methods for parent component
 defineExpose({
   handleImportActivatorAdifClick,
   handleImportActivatorCsvClick,
   handleImportChaserAdifClick,
   handleImportChaserCsvClick,
-  handleExportActivatorClick,
-  handleExportChaserClick,
 })
 </script>
 
@@ -327,31 +271,6 @@ defineExpose({
     >
       Import Chaser CSV
     </van-button>
-
-    <van-button
-      type="primary"
-      :loading="isExporting"
-      @click="handleExportActivatorClick"
-    >
-      Export Activator CSV
-    </van-button>
-
-    <van-button
-      type="primary"
-      :loading="isExporting"
-      @click="handleExportChaserClick"
-    >
-      Export Chaser CSV
-    </van-button>
-
-    <ExportFilterDialog
-      :show="showExportFilter"
-      :export-type="exportType"
-      :default-callsign="username"
-      :default-year="new Date().getFullYear()"
-      @close="handleFilterDialogClose"
-      @confirm="handleFilterConfirm"
-    />
   </div>
 </template>
 

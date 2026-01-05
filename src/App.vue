@@ -5,12 +5,16 @@ import AuthGuard from './components/AuthGuard.vue'
 import LogoutButton from './components/LogoutButton.vue'
 import ButtonBar from './components/ButtonBar.vue'
 import AdifPreviewModal from './components/AdifPreviewModal.vue'
+import ExportFilterDialog from './components/ExportFilterDialog.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import UserStatisticsPanel from './components/UserStatisticsPanel.vue'
 import ContactsView from './components/ContactsView.vue'
 import { mapToActivatorLog, calculateStatistics } from './services/adifService'
-import { apiClient } from './services/api'
+import { apiClient, type ExportFilters } from './services/api'
 import type { ParsedAdif, ImportStatistics } from './types/adif'
+import { useAuth } from './composables/useAuth'
+
+const { username } = useAuth()
 
 const activeView = ref(0)
 const buttonBarRef = ref<InstanceType<typeof ButtonBar> | null>(null)
@@ -44,10 +48,12 @@ function handleActionSelect(action: ActionSheetAction, index: number) {
       buttonBarRef.value.handleImportChaserCsvClick()
       break
     case 4:
-      buttonBarRef.value.handleExportActivatorClick()
+      exportType.value = 'activator'
+      showExportFilter.value = true
       break
     case 5:
-      buttonBarRef.value.handleExportChaserClick()
+      exportType.value = 'chaser'
+      showExportFilter.value = true
       break
   }
 }
@@ -56,6 +62,10 @@ const showPreview = ref(false)
 const parsedData = ref<ParsedAdif | null>(null)
 const statistics = ref<ImportStatistics | null>(null)
 const importErrors = ref<Array<{ record: number; reason: string }> | undefined>(undefined)
+
+const showExportFilter = ref(false)
+const exportType = ref<'activator' | 'chaser'>('activator')
+const isExporting = ref(false)
 
 function handleAdifParsed(data: ParsedAdif) {
   parsedData.value = data
@@ -150,6 +160,42 @@ async function handleConfirmImport() {
     closeToast()
   }
 }
+
+function handleExportFilterClose() {
+  showExportFilter.value = false
+}
+
+async function handleExportFilterConfirm(filters: ExportFilters) {
+  showExportFilter.value = false
+  showLoadingToast({
+    message: 'Exporting...',
+    forbidClick: true,
+    duration: 0,
+  })
+  try {
+    isExporting.value = true
+
+    if (exportType.value === 'activator') {
+      await apiClient.exportActivatorCsv(filters)
+    } else {
+      await apiClient.exportChaserCsv(filters)
+    }
+
+    showNotify({
+      type: 'success',
+      message: `${exportType.value === 'activator' ? 'Activator' : 'Chaser'} log exported successfully`,
+    })
+  } catch (error) {
+    console.error('Export error:', error)
+    showNotify({
+      type: 'danger',
+      message: error instanceof Error ? error.message : 'Export failed',
+    })
+  } finally {
+    isExporting.value = false
+    closeToast()
+  }
+}
 </script>
 
 <template>
@@ -209,6 +255,16 @@ async function handleConfirmImport() {
         :import-errors="importErrors"
         @close="handlePreviewClose"
         @confirm="handleConfirmImport"
+      />
+
+      <!-- Export Filter Dialog -->
+      <ExportFilterDialog
+        :show="showExportFilter"
+        :export-type="exportType"
+        :default-callsign="username"
+        :default-year="new Date().getFullYear()"
+        @close="handleExportFilterClose"
+        @confirm="handleExportFilterConfirm"
       />
 
       <!-- Actions Menu -->
