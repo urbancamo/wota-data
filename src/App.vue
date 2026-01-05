@@ -268,4 +268,17 @@ async function handleConfirmImport() {
   color: darkgreen;
 }
 
+/* Ensure action sheet text is visible */
+:deep(.van-action-sheet__item) {
+  --van-action-sheet-item-text-color: #323233;
+}
+
+:deep(.van-action-sheet__name) {
+  color: #323233;
+}
+
+:deep(.van-action-sheet__subname) {
+  color: #969799;
+}
+
 </style>
