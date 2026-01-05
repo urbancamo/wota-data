@@ -68,7 +68,7 @@ app.post('/data/api/auth/login', async (req, res) => {
     }
 
     // Verify credentials
-    const user = await authService.verifyCredentials(username, password)
+    const [user] = await Promise.all([authService.verifyCredentials(username, password)])
 
     // Check if account is expired
     if (authService.isUserExpired(user)) {
@@ -512,7 +512,7 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
       select: { year: true },
       orderBy: { year: 'desc' },
     })
-    const availableYears = [...new Set(allRecords.map(r => r.year))].sort((a, b) => b - a)
+    const availableYears = Array.from(new Set(allRecords.map(r => r.year))).sort((a, b) => (b as number) - (a as number))
 
     // Get total count with filter
     const total = await prisma.activatorLog.count({
@@ -588,7 +588,7 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
       select: { year: true },
       orderBy: { year: 'desc' },
     })
-    const availableYears = [...new Set(allRecords.map(r => r.year))].sort((a, b) => b - a)
+    const availableYears = Array.from(new Set(allRecords.map(r => r.year))).sort((a, b) => (b as number) - (a as number));
 
     // Get total count with filter
     const total = await prisma.chaserLog.count({
@@ -754,7 +754,7 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
     logger.info({ count: logs.length }, 'Export activator - found logs')
 
     // Get summit names for all unique WOTA IDs
-    const uniqueWotaIds = [...new Set(logs.map(log => log.wotaid))]
+    const uniqueWotaIds = Array.from(new Set(logs.map(log => log.wotaid)))
     const summits = await prisma.summit.findMany({
       where: { wotaid: { in: uniqueWotaIds } },
       select: { wotaid: true, name: true },
@@ -864,7 +864,7 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
     logger.info({ count: logs.length }, 'Export chaser - found logs')
 
     // Get summit names for all unique WOTA IDs
-    const uniqueWotaIds = [...new Set(logs.map(log => log.wotaid))]
+    const uniqueWotaIds = Array.from(new Set(logs.map(log => log.wotaid)))
     const summits = await prisma.summit.findMany({
       where: { wotaid: { in: uniqueWotaIds } },
       select: { wotaid: true, name: true },

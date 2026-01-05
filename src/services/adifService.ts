@@ -1,12 +1,12 @@
-import { AdifParser } from 'adif-parser-ts'
-import { parseWotaReference } from '../utils/wotaReference'
+import {AdifParser} from 'adif-parser-ts'
+import {parseWotaReference} from '../utils/wotaReference'
 import type {
-  AdifRecord,
-  ParsedAdif,
-  ValidationResult,
   ActivatorLogInput,
+  AdifRecord,
   ImportStatistics,
+  ParsedAdif,
   ParseError,
+  ValidationResult,
 } from '../types/adif'
 
 export async function parseAdifFile(file: File): Promise<ParsedAdif> {
@@ -141,10 +141,9 @@ export function extractWotaId(sigInfo: string | undefined): number | null {
 
   // Fallback: extract plain number for backward compatibility
   const match = sigInfo.match(/(\d+)/)
-  if (match) {
-    const num = parseInt(match[1], 10)
+  if (match && match[1]) {
     // Assume plain numbers <= 214 are LDW, > 214 need no conversion
-    return num
+    return parseInt(match[1], 10)
   }
 
   return null
@@ -169,7 +168,10 @@ function stripPortableSuffix(callsign: string): string {
   return callsign.replace(/\/[PM]$/i, '')
 }
 
-export function mapToActivatorLog(record: AdifRecord): ActivatorLogInput | null {
+export function mapToActivatorLog(record: AdifRecord | undefined): ActivatorLogInput | null {
+  if (record === undefined) {
+    return null
+  }
   // Extract WOTA ID from MY_SIG_INFO (activator's summit), not SIG_INFO (station worked's summit)
   const wotaId = extractWotaId(record.my_sig_info || record.sig_info)
 
@@ -259,8 +261,11 @@ export function calculateStatistics(
   }
 }
 
-function formatAdifDate(adifDate: string): string {
+function formatAdifDate(adifDate: string | undefined): string {
   // Convert YYYYMMDD to YYYY-MM-DD
+  if (adifDate === undefined)
+    return '';
+
   const year = adifDate.substring(0, 4)
   const month = adifDate.substring(4, 6)
   const day = adifDate.substring(6, 8)

@@ -292,10 +292,13 @@ async function checkDuplicates() {
 
     // Transform records and maintain original indices
     const transformedRecords = []
-    const indexMapping = []
+    const indexMapping: any[] = []
 
     for (let i = 0; i < props.parsedData.records.length; i++) {
-      const transformed = mapToActivatorLog(props.parsedData.records[i])
+      if (props.parsedData.records[i] === undefined) {
+        continue;
+      }
+      const transformed =  mapToActivatorLog(props.parsedData.records[i])
       if (transformed !== null) {
         transformedRecords.push(transformed)
         indexMapping.push(i)
@@ -313,13 +316,6 @@ async function checkDuplicates() {
       const originalIndex = indexMapping[transformedIndex]
       dupFlags[originalIndex] = isDuplicate
     })
-
-    if (response.possibleDuplicates) {
-      response.possibleDuplicates.forEach((isPossibleDuplicate, transformedIndex) => {
-        const originalIndex = indexMapping[transformedIndex]
-        possDupFlags[originalIndex] = isPossibleDuplicate
-      })
-    }
 
     duplicateFlags.value = dupFlags
     possibleDuplicateFlags.value = possDupFlags
@@ -421,11 +417,6 @@ async function selectSummit(index: number, summit: Summit) {
 }
 
 // Close autocomplete
-function closeAutocomplete() {
-  autocompleteActive.value = null
-  autocompleteMatches.value = []
-}
-
 // Get summit name by wotaid
 function getSummitName(record: AdifRecord, index: number): string {
   const rawValue = getSummit(record, index)
@@ -567,7 +558,6 @@ function getS2sSummitName(record: AdifRecord): string {
                         :value="getSummit(record, index)"
                         @input="handleAutocompleteInput(index, ($event.target as HTMLInputElement).value)"
                         @focus="handleAutocompleteInput(index, getSummit(record, index))"
-                        @blur="setTimeout(() => closeAutocomplete(), 200)"
                         placeholder="e.g. LDW-001 or Scafell"
                       />
 
@@ -827,7 +817,7 @@ function getS2sSummitName(record: AdifRecord): string {
   padding: 2px 4px;
   border-radius: 3px;
   font-family: sans-serif;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .duplicate-indicator {
@@ -838,7 +828,7 @@ function getS2sSummitName(record: AdifRecord): string {
   padding: 2px 4px;
   border-radius: 3px;
   font-family: sans-serif;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   margin-left: 6px;
 }
 
@@ -867,7 +857,7 @@ function getS2sSummitName(record: AdifRecord): string {
   padding: 2px 4px;
   border-radius: 3px;
   font-family: sans-serif;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   margin-left: 6px;
 }
 
