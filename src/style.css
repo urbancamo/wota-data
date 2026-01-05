@@ -15,6 +15,9 @@
   -moz-osx-font-smoothing: grayscale;
 
   --van-toast-text-color: black;
+  --van-notify-text-color: #323233;
+  --van-action-sheet-item-text-color: #323233;
+  --van-action-sheet-subname-color: #969799;
 }
 
 html {

@@ -250,12 +250,11 @@ async function handleConfirmImport() {
 .van-notify {
   font-size: 14px;
   font-weight: 500;
-  --van-notify-text-color: darkred;
 }
 
 .van-notify--danger {
   background-color: white;
-  color: var(--van-notify-text-color);
+  color: darkred;
 }
 
 .van-notify--warning {
@@ -266,19 +265,6 @@ async function handleConfirmImport() {
 .van-notify--success {
   background-color: white;
   color: darkgreen;
-}
-
-/* Ensure action sheet text is visible */
-:deep(.van-action-sheet__item) {
-  --van-action-sheet-item-text-color: #323233;
-}
-
-:deep(.van-action-sheet__name) {
-  color: #323233;
-}
-
-:deep(.van-action-sheet__subname) {
-  color: #969799;
 }
 
 </style>
