@@ -14,6 +14,7 @@ declare module 'vue' {
     AdifPreviewModal: typeof import('./src/components/AdifPreviewModal.vue')['default']
     AuthGuard: typeof import('./src/components/AuthGuard.vue')['default']
     ButtonBar: typeof import('./src/components/ButtonBar.vue')['default']
+    ChaserAdifPreviewModal: typeof import('./src/components/ChaserAdifPreviewModal.vue')['default']
     ContactsView: typeof import('./src/components/ContactsView.vue')['default']
     ExportFilterDialog: typeof import('./src/components/ExportFilterDialog.vue')['default']
     LoginForm: typeof import('./src/components/LoginForm.vue')['default']

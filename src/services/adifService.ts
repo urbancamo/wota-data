@@ -7,6 +7,8 @@ import type {
   ParsedAdif,
   ParseError,
   ValidationResult,
+  ChaserImportRecord,
+  ChaserImportResult,
 } from '../types/adif'
 
 export async function parseAdifFile(file: File): Promise<ParsedAdif> {
@@ -270,4 +272,185 @@ function formatAdifDate(adifDate: string | undefined): string {
   const month = adifDate.substring(4, 6)
   const day = adifDate.substring(6, 8)
   return `${year}-${month}-${day}`
+}
+
+function formatAdifTime(adifTime: string | undefined): string {
+  // Convert HHMMSS or HHMM to HH:MM:SS
+  if (!adifTime) return ''
+
+  const timeStr = adifTime.padEnd(6, '0') // Pad to HHMMSS if only HHMM
+  const hours = timeStr.substring(0, 2)
+  const minutes = timeStr.substring(2, 4)
+  const seconds = timeStr.substring(4, 6)
+
+  return `${hours}:${minutes}:${seconds}`
+}
+
+/**
+ * Parse ADIF file for chaser log import
+ */
+export async function parseChaserAdifFile(file: File): Promise<ChaserImportResult> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string
+        const parsed = AdifParser.parseAdi(content)
+
+        let adifRecords: AdifRecord[] = parsed.records || []
+        const records: ChaserImportRecord[] = []
+
+        // Process each ADIF record
+        adifRecords.forEach((adifRecord) => {
+          const sig = adifRecord.sig
+          const sigInfo = adifRecord.sig_info
+          const ucall = adifRecord.station_callsign
+          const stncall = adifRecord.call
+          const qsoDate = adifRecord.qso_date
+          const timeOn = adifRecord.time_on
+
+          const validationErrors: string[] = []
+
+          // Validate SIG field
+          if (!sig) {
+            validationErrors.push('SIG field is missing')
+          } else if (sig.toUpperCase() !== 'WOTA') {
+            validationErrors.push('SIG field must be "WOTA"')
+          }
+
+          // Validate required fields
+          if (!sigInfo) {
+            validationErrors.push('SIG_INFO (WOTA reference) is required')
+          }
+
+          if (!ucall) {
+            validationErrors.push('STATION_CALLSIGN is required')
+          }
+
+          if (!stncall) {
+            validationErrors.push('CALL is required')
+          }
+
+          if (!qsoDate) {
+            validationErrors.push('QSO_DATE is required')
+          }
+
+          const year = qsoDate ? parseInt(qsoDate.substring(0, 4)) : 0
+
+          records.push({
+            ucall: ucall || '',
+            stncall: stncall || '',
+            wotaRef: sigInfo || '',
+            date: qsoDate ? formatAdifDate(qsoDate) : '',
+            time: timeOn ? formatAdifTime(timeOn) : undefined,
+            year,
+            isValid: validationErrors.length === 0,
+            validationErrors
+          })
+        })
+
+        const validRecords = records.filter(r => r.isValid).length
+
+        resolve({
+          records,
+          totalRecords: records.length,
+          validRecords,
+          invalidRecords: records.length - validRecords
+        })
+      } catch (error) {
+        reject(new Error(`Failed to parse chaser ADIF file: ${error}`))
+      }
+    }
+
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'))
+    }
+
+    reader.readAsText(file)
+  })
+}
+
+/**
+ * Validate WOTA references and populate wotaid for chaser records
+ */
+export async function validateChaserWotaRefs(
+  records: ChaserImportRecord[]
+): Promise<ChaserImportRecord[]> {
+  // Get unique WOTA references that need validation
+  const uniqueRefs = [...new Set(records.map(r => r.wotaRef).filter(Boolean))]
+
+  if (uniqueRefs.length === 0) {
+    return records
+  }
+
+  try {
+    const response = await fetch('/data/api/summits/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ references: uniqueRefs })
+    })
+
+    if (!response.ok) {
+      throw new Error('Validation request failed')
+    }
+
+    const { valid, invalid } = await response.json()
+
+    // Create a map of valid references to their IDs
+    const validMap = new Map<string, number>(
+      valid.map((v: { ref: string; id: number }) => [v.ref, v.id])
+    )
+
+    // Update records with validation results
+    return records.map(record => {
+      if (!record.wotaRef) return record
+
+      const wotaid = validMap.get(record.wotaRef)
+      if (wotaid !== undefined) {
+        // Valid reference - populate wotaid
+        return { ...record, wotaid }
+      } else {
+        // Invalid reference - mark as invalid
+        return {
+          ...record,
+          isValid: false,
+          validationErrors: [...record.validationErrors, `Invalid WOTA reference: ${record.wotaRef}`]
+        }
+      }
+    })
+  } catch (error) {
+    console.error('WOTA reference validation failed:', error)
+    return records
+  }
+}
+
+/**
+ * Check for duplicate chaser records
+ */
+export async function checkChaserDuplicates(
+  records: ChaserImportRecord[]
+): Promise<ChaserImportRecord[]> {
+  try {
+    const response = await fetch('/data/api/import/check-chaser-duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records })
+    })
+
+    if (!response.ok) {
+      throw new Error('Duplicate check request failed')
+    }
+
+    const { duplicates } = await response.json()
+    const duplicateSet = new Set(duplicates)
+
+    return records.map((record, index) => ({
+      ...record,
+      isDuplicate: duplicateSet.has(index)
+    }))
+  } catch (error) {
+    console.error('Duplicate check failed:', error)
+    return records
+  }
 }

@@ -319,6 +319,137 @@ app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
   }
 })
 
+// Check for duplicate chaser records
+app.post('/data/api/import/check-chaser-duplicates', requireAuth, async (req, res) => {
+  try {
+    const { records } = req.body
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Invalid request: records array required' })
+    }
+
+    const duplicateIndices: number[] = []
+
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i]
+
+      // Skip invalid records
+      if (!record.wotaid || !record.date || !record.stncall) {
+        continue
+      }
+
+      // Check for existing chaser log entry
+      const existing = await prisma.chaserLog.findFirst({
+        where: {
+          wkdby: userCallsign,
+          wotaid: record.wotaid,
+          date: new Date(record.date),
+          stncall: record.stncall
+        }
+      })
+
+      if (existing) {
+        duplicateIndices.push(i)
+      }
+    }
+
+    res.json({ duplicates: duplicateIndices })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Chaser duplicate check error')
+    res.status(500).json({ error: 'Duplicate check failed' })
+  }
+})
+
+// Import chaser ADIF records
+app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
+  try {
+    const { records } = req.body
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Invalid request: records array required' })
+    }
+
+    let imported = 0
+    let skipped = 0
+    let failed = 0
+
+    for (const record of records) {
+      try {
+        // Validate required fields
+        if (!record.wotaid || !record.ucall || !record.stncall || !record.date) {
+          logger.warn({ record }, 'Skipping record with missing required fields')
+          failed++
+          continue
+        }
+
+        // Check for duplicate
+        const existing = await prisma.chaserLog.findFirst({
+          where: {
+            wkdby: userCallsign,
+            wotaid: record.wotaid,
+            date: new Date(record.date),
+            stncall: record.stncall
+          }
+        })
+
+        if (existing) {
+          logger.debug({ record }, 'Skipping duplicate chaser record')
+          skipped++
+          continue
+        }
+
+        // Parse time if provided
+        let timeValue = null
+        if (record.time) {
+          // time is in format "HH:MM:SS"
+          timeValue = new Date(`1970-01-01T${record.time}`)
+        }
+
+        // Insert record
+        await prisma.chaserLog.create({
+          data: {
+            wkdby: userCallsign,
+            ucall: record.ucall,
+            stncall: record.stncall,
+            wotaid: record.wotaid,
+            date: new Date(record.date),
+            time: timeValue,
+            year: record.year,
+            points: 1,
+            rpt: false,
+            wawpoints: 0,
+            points_yr: 1,
+            wawpoints_yr: 0,
+            confirmed: false
+          }
+        })
+
+        logger.info({ wkdby: userCallsign, wotaid: record.wotaid, stncall: record.stncall }, 'Imported chaser record')
+        imported++
+      } catch (error) {
+        logger.error({ error, record }, 'Failed to import chaser record')
+        failed++
+      }
+    }
+
+    logger.info({ imported, skipped, failed, username: userCallsign }, 'Chaser ADIF import complete')
+    res.json({ imported, skipped, failed })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Chaser ADIF import error')
+    res.status(500).json({ error: 'Import failed' })
+  }
+})
+
 // Get all spots
 app.get('/data/api/spots', requireAuth, async (req, res) => {
   try {
@@ -380,6 +511,38 @@ app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error looking up SOTA reference')
     res.status(500).json({ error: 'Failed to look up SOTA reference' })
+  }
+})
+
+// Validate WOTA summit references
+app.post('/data/api/summits/validate', async (req, res) => {
+  try {
+    const { references } = req.body
+
+    if (!Array.isArray(references)) {
+      return res.status(400).json({ error: 'Invalid request: references array required' })
+    }
+
+    const summits = await prisma.summit.findMany({
+      where: {
+        ref: { in: references }
+      },
+      select: {
+        wotaid: true,
+        ref: true,
+        name: true
+      }
+    })
+
+    const validRefs = summits.map(s => ({ id: s.wotaid, ref: s.ref, name: s.name }))
+    const invalidRefs = references.filter(
+      ref => !summits.find(s => s.ref === ref)
+    )
+
+    res.json({ valid: validRefs, invalid: invalidRefs })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method }, 'Summit validation error')
+    res.status(500).json({ error: 'Validation failed' })
   }
 })
 

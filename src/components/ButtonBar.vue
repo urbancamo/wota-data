@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { showNotify } from 'vant'
-import { parseAdifFile, calculateStatistics as calculateAdifStatistics } from '../services/adifService'
+import { showNotify, showDialog } from 'vant'
+import { parseAdifFile, calculateStatistics as calculateAdifStatistics, parseChaserAdifFile, validateChaserWotaRefs, checkChaserDuplicates } from '../services/adifService'
 import { parseCsvFile, calculateStatistics as calculateCsvStatistics } from '../services/csvService'
-import type { ParsedAdif } from '../types/adif'
+import type { ParsedAdif, ChaserImportRecord, ChaserImportResult } from '../types/adif'
+import ChaserAdifPreviewModal from './ChaserAdifPreviewModal.vue'
 
 const emit = defineEmits<{
   (e: 'adifParsed', data: ParsedAdif): void
@@ -14,6 +15,16 @@ const csvFileInput = ref<HTMLInputElement | null>(null)
 const chaserAdifFileInput = ref<HTMLInputElement | null>(null)
 const chaserCsvFileInput = ref<HTMLInputElement | null>(null)
 const isProcessing = ref(false)
+
+// Chaser import state
+const showChaserPreview = ref(false)
+const chaserImportRecords = ref<ChaserImportRecord[]>([])
+const chaserImportStats = ref({
+  total: 0,
+  valid: 0,
+  invalid: 0,
+  duplicates: 0
+})
 
 function handleImportActivatorAdifClick() {
   adifFileInput.value?.click()
@@ -167,14 +178,143 @@ async function handleChaserAdifFileSelect(event: Event) {
     return
   }
 
-  // TODO: Implement chaser ADIF import
-  showNotify({
-    type: 'warning',
-    message: 'Chaser ADIF import not yet implemented',
-  })
+  // Check file extension
+  if (!file.name.match(/\.(adi|adif)$/i)) {
+    showNotify({
+      type: 'warning',
+      message: 'Please select an ADIF file (.adi or .adif)',
+    })
+    return
+  }
 
-  // Reset file input
-  if (target) target.value = ''
+  isProcessing.value = true
+
+  try {
+    showNotify({
+      type: 'default',
+      message: 'Parsing ADIF file...',
+      duration: 1000,
+    })
+
+    // Parse file
+    let result: ChaserImportResult = await parseChaserAdifFile(file)
+
+    if (result.totalRecords === 0) {
+      showNotify({
+        type: 'danger',
+        message: 'No records found in ADIF file',
+      })
+      return
+    }
+
+    showNotify({
+      type: 'default',
+      message: 'Validating WOTA references...',
+      duration: 1000,
+    })
+
+    // Validate WOTA references
+    try {
+      result.records = await validateChaserWotaRefs(result.records)
+      console.log('WOTA reference validation complete')
+    } catch (validationError) {
+      console.error('WOTA validation error:', validationError)
+      // Continue with unvalidated records
+    }
+
+    showNotify({
+      type: 'default',
+      message: 'Checking for duplicates...',
+      duration: 1000,
+    })
+
+    // Check for duplicates
+    try {
+      result.records = await checkChaserDuplicates(result.records)
+      console.log('Duplicate check complete')
+    } catch (duplicateError) {
+      console.error('Duplicate check error:', duplicateError)
+      // Continue without duplicate checking
+    }
+
+    // Update stats
+    const validRecords = result.records.filter(r => r.isValid).length
+    const duplicateCount = result.records.filter(r => r.isDuplicate).length
+
+    chaserImportRecords.value = result.records
+    chaserImportStats.value = {
+      total: result.totalRecords,
+      valid: validRecords,
+      invalid: result.totalRecords - validRecords,
+      duplicates: duplicateCount
+    }
+
+    console.log('Chaser import stats:', chaserImportStats.value)
+    console.log('Total records:', chaserImportRecords.value.length)
+
+    // Show preview modal
+    showChaserPreview.value = true
+    console.log('Set showChaserPreview to true')
+  } catch (error) {
+    console.error('Chaser ADIF parse error:', error)
+    showNotify({
+      type: 'danger',
+      message: error instanceof Error ? error.message : 'Failed to parse chaser ADIF file',
+    })
+  } finally {
+    isProcessing.value = false
+    // Reset file input
+    if (target) target.value = ''
+  }
+}
+
+async function handleChaserImportConfirm(validRecords: ChaserImportRecord[]) {
+  try {
+    isProcessing.value = true
+    showNotify({
+      type: 'default',
+      message: 'Importing records...',
+      duration: 2000,
+    })
+
+    const response = await fetch('/data/api/import/chaser-adif', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: validRecords })
+    })
+
+    if (!response.ok) {
+      throw new Error('Import failed')
+    }
+
+    const result = await response.json()
+
+    // Close modal
+    showChaserPreview.value = false
+
+    // Show success dialog
+    await showDialog({
+      title: 'Import Complete',
+      message: `
+        Imported: ${result.imported}
+        Skipped (duplicates): ${result.skipped}
+        Failed: ${result.failed}
+      `,
+    })
+
+    showNotify({
+      type: 'success',
+      message: `Successfully imported ${result.imported} chaser records`,
+    })
+  } catch (error) {
+    console.error('Chaser import error:', error)
+    showNotify({
+      type: 'danger',
+      message: error instanceof Error ? error.message : 'Import failed',
+    })
+  } finally {
+    isProcessing.value = false
+  }
 }
 
 async function handleChaserCsvFileSelect(event: Event) {
@@ -271,6 +411,17 @@ defineExpose({
     >
       Import Chaser CSV
     </van-button>
+
+    <ChaserAdifPreviewModal
+      :show="showChaserPreview"
+      :records="chaserImportRecords"
+      :total-records="chaserImportStats.total"
+      :valid-records="chaserImportStats.valid"
+      :invalid-records="chaserImportStats.invalid"
+      :duplicate-records="chaserImportStats.duplicates"
+      @close="showChaserPreview = false"
+      @confirm="handleChaserImportConfirm"
+    />
   </div>
 </template>
 

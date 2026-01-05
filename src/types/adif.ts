@@ -98,3 +98,23 @@ export interface Summit {
   height: number
   book: string
 }
+
+export interface ChaserImportRecord {
+  ucall: string
+  stncall: string
+  wotaRef: string
+  wotaid?: number
+  date: string
+  time?: string
+  year: number
+  isValid: boolean
+  validationErrors: string[]
+  isDuplicate?: boolean
+}
+
+export interface ChaserImportResult {
+  records: ChaserImportRecord[]
+  totalRecords: number
+  validRecords: number
+  invalidRecords: number
+}
