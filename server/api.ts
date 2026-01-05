@@ -12,6 +12,8 @@ import { prisma as realPrisma, getCmsDb, disconnectDatabases } from './db'
 import { createPrismaStub } from './db-stub'
 import { authService, AuthError } from './services/authService'
 import { requireAuth } from './middleware/authMiddleware'
+import { logger } from './logger'
+import { loggingMiddleware } from './middleware/loggingMiddleware'
 
 // Load environment variables
 dotenv.config()
@@ -47,6 +49,9 @@ app.use(session({
     sameSite: 'lax'
   }
 }))
+
+// Logging middleware
+app.use(loggingMiddleware(logger))
 
 // Health check endpoint
 app.get('/data/api/health', (req, res) => {

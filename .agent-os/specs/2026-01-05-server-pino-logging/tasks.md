@@ -14,13 +14,13 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 1.4 Create logs/ directory structure with .gitkeep
   - [x] 1.5 Export configured logger instance
 
-- [ ] 2. Implement request/response logging middleware
-  - [ ] 2.1 Write tests for logging middleware
-  - [ ] 2.2 Create middleware to capture request start time and user context
-  - [ ] 2.3 Create middleware to log response completion with duration
-  - [ ] 2.4 Extract username/callsign from req.session when available
-  - [ ] 2.5 Add logging middleware to Express app before route handlers
-  - [ ] 2.6 Verify all tests pass
+- [x] 2. Implement request/response logging middleware
+  - [x] 2.1 Write tests for logging middleware
+  - [x] 2.2 Create middleware to capture request start time and user context
+  - [x] 2.3 Create middleware to log response completion with duration
+  - [x] 2.4 Extract username/callsign from req.session when available
+  - [x] 2.5 Add logging middleware to Express app before route handlers
+  - [x] 2.6 Verify all tests pass
 
 - [ ] 3. Replace console.log/error with pino logger
   - [ ] 3.1 Replace console.log in health check and utility functions
