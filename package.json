@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:proxied": "VITE_PROXIED=true vite",
     "api": "tsx server/api.ts",
     "api:stub": "tsx server/api.ts --stub-db",
     "start": "run-p api dev",
     "start:stub": "run-p api:stub dev",
+    "start:proxied": "run-p api dev:proxied",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest"
