@@ -14,8 +14,8 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --van-toast-text-color: darkred;
-  --van-notify-text-color: #323233;
+  --van-toast-text-color: black;
+  --van-notify-text-color: darkred;
   --van-action-sheet-item-text-color: #323233;
   --van-action-sheet-subname-color: #969799;
 }
