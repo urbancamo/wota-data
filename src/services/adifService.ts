@@ -166,7 +166,7 @@ export function extractSotaReference(record: AdifRecord): string | null {
 }
 
 // Helper function to strip /P or /M suffix from callsign
-function stripPortableSuffix(callsign: string): string {
+export function stripPortableSuffix(callsign: string): string {
   return callsign.replace(/\/[PM]$/i, '')
 }
 
@@ -311,17 +311,28 @@ export async function parseChaserAdifFile(file: File): Promise<ChaserImportResul
           const timeOn = adifRecord.time_on
 
           const validationErrors: string[] = []
+          let wotaRef = ''
+          let sotaRef: string | undefined
 
-          // Validate SIG field
+          // Validate SIG field - accept both WOTA and SOTA
           if (!sig) {
             validationErrors.push('SIG field is missing')
-          } else if (sig.toUpperCase() !== 'WOTA') {
-            validationErrors.push('SIG field must be "WOTA"')
+          } else {
+            const sigUpper = sig.toUpperCase()
+            if (sigUpper === 'WOTA') {
+              wotaRef = sigInfo || ''
+            } else if (sigUpper === 'SOTA') {
+              // Store SOTA reference for conversion
+              sotaRef = sigInfo || ''
+              wotaRef = sigInfo || '' // Will be converted later
+            } else {
+              validationErrors.push('SIG field must be "WOTA" or "SOTA"')
+            }
           }
 
           // Validate required fields
           if (!sigInfo) {
-            validationErrors.push('SIG_INFO (WOTA reference) is required')
+            validationErrors.push('SIG_INFO (WOTA/SOTA reference) is required')
           }
 
           if (!ucall) {
@@ -338,10 +349,18 @@ export async function parseChaserAdifFile(file: File): Promise<ChaserImportResul
 
           const year = qsoDate ? parseInt(qsoDate.substring(0, 4)) : 0
 
+          // Validate year is within allowed range (matches PHP log_contact.php lines 31-51)
+          const validYears = [2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
+                              2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+          if (!validYears.includes(year)) {
+            validationErrors.push(`Invalid year: ${year}. Must be between 2009-2026`)
+          }
+
           records.push({
             ucall: ucall || '',
             stncall: stncall || '',
-            wotaRef: sigInfo || '',
+            wotaRef,
+            sotaRef,
             date: qsoDate ? formatAdifDate(qsoDate) : '',
             time: timeOn ? formatAdifTime(timeOn) : undefined,
             year,
@@ -373,56 +392,97 @@ export async function parseChaserAdifFile(file: File): Promise<ChaserImportResul
 
 /**
  * Validate WOTA references and populate wotaid for chaser records
+ * Also converts SOTA references (G/LD-xxx) to WOTA IDs
  */
 export async function validateChaserWotaRefs(
   records: ChaserImportRecord[]
 ): Promise<ChaserImportRecord[]> {
-  // Get unique WOTA references that need validation
-  const uniqueRefs = [...new Set(records.map(r => r.wotaRef).filter(Boolean))]
+  // Separate SOTA references from WOTA references
+  const sotaRecords = records.filter(r => r.sotaRef)
+  const wotaRecords = records.filter(r => !r.sotaRef && r.wotaRef)
 
-  if (uniqueRefs.length === 0) {
-    return records
+  // Convert SOTA references to WOTA IDs
+  const sotaConversionMap = new Map<string, number>()
+
+  for (const record of sotaRecords) {
+    if (!record.sotaRef) continue
+
+    // Check if it's a Lake District SOTA reference (G/LD-xxx)
+    if (record.sotaRef.toUpperCase().startsWith('G/LD')) {
+      try {
+        const response = await fetch(`/data/api/summits/sota/${encodeURIComponent(record.sotaRef)}`)
+        if (response.ok) {
+          const summit = await response.json()
+          sotaConversionMap.set(record.sotaRef, summit.wotaid)
+        }
+      } catch (error) {
+        console.error(`Failed to convert SOTA reference ${record.sotaRef}:`, error)
+      }
+    }
   }
 
-  try {
-    const response = await fetch('/data/api/summits/validate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ references: uniqueRefs })
-    })
+  // Get unique WOTA references that need validation
+  const uniqueWotaRefs = [...new Set(wotaRecords.map(r => r.wotaRef).filter(Boolean))]
 
-    if (!response.ok) {
-      throw new Error('Validation request failed')
+  let wotaValidationMap = new Map<string, number>()
+
+  if (uniqueWotaRefs.length > 0) {
+    try {
+      const response = await fetch('/data/api/summits/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ references: uniqueWotaRefs })
+      })
+
+      if (!response.ok) {
+        throw new Error('Validation request failed')
+      }
+
+      const { valid } = await response.json()
+
+      // Create a map of valid references to their IDs
+      wotaValidationMap = new Map<string, number>(
+        valid.map((v: { ref: string; id: number }) => [v.ref, v.id])
+      )
+    } catch (error) {
+      console.error('WOTA reference validation failed:', error)
     }
+  }
 
-    const { valid, invalid } = await response.json()
+  // Update records with validation results
+  return records.map(record => {
+    if (!record.wotaRef) return record
 
-    // Create a map of valid references to their IDs
-    const validMap = new Map<string, number>(
-      valid.map((v: { ref: string; id: number }) => [v.ref, v.id])
-    )
-
-    // Update records with validation results
-    return records.map(record => {
-      if (!record.wotaRef) return record
-
-      const wotaid = validMap.get(record.wotaRef)
+    // Check if this is a SOTA reference
+    if (record.sotaRef) {
+      const wotaid = sotaConversionMap.get(record.sotaRef)
       if (wotaid !== undefined) {
-        // Valid reference - populate wotaid
+        // Valid SOTA reference converted to WOTA
         return { ...record, wotaid }
       } else {
-        // Invalid reference - mark as invalid
+        // Invalid SOTA reference (not G/LD or not found)
         return {
           ...record,
           isValid: false,
-          validationErrors: [...record.validationErrors, `Invalid WOTA reference: ${record.wotaRef}`]
+          validationErrors: [...record.validationErrors, `Invalid or non-WOTA SOTA reference: ${record.sotaRef}`]
         }
       }
-    })
-  } catch (error) {
-    console.error('WOTA reference validation failed:', error)
-    return records
-  }
+    }
+
+    // Regular WOTA reference
+    const wotaid = wotaValidationMap.get(record.wotaRef)
+    if (wotaid !== undefined) {
+      // Valid reference - populate wotaid
+      return { ...record, wotaid }
+    } else {
+      // Invalid reference - mark as invalid
+      return {
+        ...record,
+        isValid: false,
+        validationErrors: [...record.validationErrors, `Invalid WOTA reference: ${record.wotaRef}`]
+      }
+    }
+  })
 }
 
 /**

@@ -50,6 +50,18 @@ function getFormattedWotaReference(record: ChaserImportRecord): string {
   return formatWotaReference(record.wotaid)
 }
 
+function getDisplayReference(record: ChaserImportRecord): string {
+  const wotaRef = getFormattedWotaReference(record)
+  if (record.sotaRef) {
+    return `${record.sotaRef} → ${wotaRef}`
+  }
+  return wotaRef
+}
+
+function isConvertedFromSota(record: ChaserImportRecord): boolean {
+  return !!record.sotaRef
+}
+
 function getSummitName(record: ChaserImportRecord): string {
   if (!record.wotaid) return '-'
 
@@ -157,7 +169,10 @@ watch(() => props.show, (isShown) => {
               <td>{{ record.ucall || '-' }}</td>
               <td>{{ record.stncall || '-' }}</td>
               <td class="summit-cell">
-                <div class="formatted-reference">{{ getFormattedWotaReference(record) }}</div>
+                <div class="formatted-reference">
+                  {{ getDisplayReference(record) }}
+                  <span v-if="isConvertedFromSota(record)" class="sota-indicator" title="Auto-converted from SOTA">SOTA</span>
+                </div>
                 <div class="summit-name">{{ getSummitName(record) }}</div>
               </td>
               <td>
@@ -195,7 +210,8 @@ watch(() => props.show, (isShown) => {
         <p><strong>Import Behavior:</strong></p>
         <ul>
           <li>✓ Valid records with SIG=WOTA and valid WOTA references will be imported</li>
-          <li>✗ Invalid records (missing fields, invalid SIG, or bad WOTA references) will be excluded</li>
+          <li>✓ Valid records with SIG=SOTA and valid G/LD-xxx SOTA references will be auto-converted to WOTA and imported</li>
+          <li>✗ Invalid records (missing fields, invalid SIG, or bad references) will be excluded</li>
           <li>✗ Duplicate records (already in your chaser log) will be skipped</li>
         </ul>
       </div>
@@ -339,6 +355,18 @@ watch(() => props.show, (isShown) => {
   font-size: 11px;
   margin-top: 2px;
   font-style: italic;
+}
+
+.sota-indicator {
+  font-size: 9px;
+  font-weight: 600;
+  color: white;
+  background: #07c160;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: sans-serif;
+  letter-spacing: 1px;
+  margin-left: 6px;
 }
 
 .validation-errors {

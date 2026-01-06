@@ -103,6 +103,7 @@ export interface ChaserImportRecord {
   ucall: string
   stncall: string
   wotaRef: string
+  sotaRef?: string
   wotaid?: number
   date: string
   time?: string

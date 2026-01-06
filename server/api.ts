@@ -14,6 +14,7 @@ import { authService, AuthError } from './services/authService'
 import { requireAuth } from './middleware/authMiddleware'
 import { logger } from './logger'
 import { loggingMiddleware } from './middleware/loggingMiddleware'
+import { stripPortableSuffix } from '../src/services/adifService'
 
 // Load environment variables
 dotenv.config()
@@ -151,6 +152,9 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
     const errors = []
     let skipped = 0
 
+    // Track unique activations for points calculation (per summit per year)
+    const uniqueActivations = new Set<string>()
+
     // Import records using Prisma transaction
     for (let i = 0; i < records.length; i++) {
       const record = records[i]
@@ -168,22 +172,29 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
           continue
         }
 
+        // Validate year (matches PHP log_activation.php lines 135-155)
+        const validYears = [2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
+                            2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+        if (!validYears.includes(record.year)) {
+          errors.push({ record: i, reason: `Invalid year: ${record.year}. Must be between 2009-2026` })
+          continue
+        }
+
+        // Strip /P or /M suffix from callused (matches PHP stncall function)
+        const cleanCallused = stripPortableSuffix(record.callused)
+
         // Parse date to compare only the date part (not time)
         const recordDate = new Date(record.date)
         recordDate.setHours(0, 0, 0, 0)
 
-        // Check if this is a duplicate
-        // Include band and mode in duplicate check if present in ADIF file
+        // Check if this is a duplicate (matches PHP log_activation.php lines 53-54)
+        // Include activatedby, wotaid, stncall, date, band, mode
         const existing = await prisma.activatorLog.findFirst({
           where: {
+            activatedby: userCallsign,
             date: recordDate,
             wotaid: record.wotaid,
-            OR: [
-              { callused: record.callused },
-              { callused: `${record.callused}/P` },
-              { callused: `${record.callused}/M` },
-            ],
-            ucall: record.ucall,
+            stncall: record.stncall,
             band: record.band || null,
             mode: record.mode || null,
           },
@@ -195,11 +206,38 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
           continue
         }
 
+        // Check for matching chaser log entry to confirm the contact
+        // Match criteria: ucall (chaser) = stncall (activator worked), wotaid, stncall (chaser) = callused (activator), date
+        const matchingChaserLog = await prisma.chaserLog.findFirst({
+          where: {
+            ucall: record.ucall,
+            wotaid: record.wotaid,
+            stncall: cleanCallused,
+            date: recordDate
+          }
+        })
+
+        let confirmed = false
+        if (matchingChaserLog) {
+          confirmed = true
+          // Update the matching chaser log record to confirmed
+          await prisma.chaserLog.update({
+            where: { id: matchingChaserLog.id },
+            data: { confirmed: true }
+          })
+          logger.info({
+            activator: cleanCallused,
+            chaser: record.ucall,
+            wotaid: record.wotaid,
+            date: recordDate.toISOString().split('T')[0]
+          }, 'Contact confirmed with matching chaser log')
+        }
+
         // Insert into database
         const result = await prisma.activatorLog.create({
           data: {
             activatedby: userCallsign, // Use authenticated user's username
-            callused: record.callused,
+            callused: cleanCallused.substring(0, 8),
             wotaid: record.wotaid,
             date: recordDate,
             time: record.time || null,
@@ -208,14 +246,41 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
             ucall: record.ucall,
             rpt: null,
             s2s: record.s2s,
-            confirmed: false, // Defaults to false (updated by separate job)
+            confirmed: confirmed,
             band: record.band || null,
             frequency: record.frequency || null,
             mode: record.mode || null,
           },
         })
 
+        // Update summit table with last activator details
+        // Only update if this activation is more recent than the existing last_act_date
+        const summit = await prisma.summit.findUnique({
+          where: { wotaid: record.wotaid },
+          select: { last_act_date: true }
+        })
+
+        if (!summit?.last_act_date || recordDate >= summit.last_act_date) {
+          await prisma.summit.update({
+            where: { wotaid: record.wotaid },
+            data: {
+              last_act_by: cleanCallused,
+              last_act_date: recordDate
+            }
+          })
+
+          logger.info({
+            summit: record.wotaid,
+            activator: cleanCallused,
+            date: recordDate.toISOString().split('T')[0]
+          }, 'Updated summit last activation details')
+        }
+
         results.push(result)
+
+        // Track this activation for points calculation
+        const activationKey = `${record.wotaid}-${record.year}`
+        uniqueActivations.add(activationKey)
       } catch (error) {
         logger.error({ error, recordIndex: i, record }, 'Error importing record')
         errors.push({
@@ -225,12 +290,41 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
       }
     }
 
+    // Calculate activator points for unique activations (matches PHP log_activation.php lines 158-170)
+    let totalActPoints = 0
+    let totalActPointsYr = 0
+
+    if (results.length > 0) {
+      // Group by unique activations
+      for (const activationKey of uniqueActivations) {
+        const [wotaidStr, yearStr] = activationKey.split('-')
+        const wotaid = parseInt(wotaidStr)
+        const year = parseInt(yearStr)
+
+        const points = await calculateActivatorPoints(userCallsign, wotaid, year, prisma)
+        totalActPoints += points.act_points
+        totalActPointsYr += points.act_points_yr
+      }
+
+      logger.info({
+        activator: userCallsign,
+        uniqueActivations: uniqueActivations.size,
+        actPoints: totalActPoints,
+        actPointsYr: totalActPointsYr
+      }, 'Calculated activator points')
+    }
+
     res.json({
       success: true,
       imported: results.length,
       skipped: skipped,
       failed: errors.length,
       errors: errors.length > 0 ? errors : undefined,
+      activatorPoints: {
+        allTime: totalActPoints,
+        yearly: totalActPointsYr,
+        uniqueActivations: uniqueActivations.size
+      }
     })
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Import error')
@@ -365,6 +459,106 @@ app.post('/data/api/import/check-chaser-duplicates', requireAuth, async (req, re
   }
 })
 
+// Calculate activator points for first-time activations (matches PHP log_activation.php lines 14-32, 158-170)
+async function calculateActivatorPoints(
+  activatedby: string,
+  wotaid: number,
+  year: number,
+  prisma: PrismaClient
+): Promise<{
+  act_points: number
+  act_points_yr: number
+}> {
+  // Check all-time: has this activator activated this summit before?
+  const existingAllTime = await prisma.activatorLog.findFirst({
+    where: {
+      activatedby: activatedby,
+      wotaid: wotaid
+    },
+    select: { id: true }
+  })
+  const act_points = existingAllTime ? 0 : 1
+
+  // Check yearly: has this activator activated this summit this year?
+  const existingYearly = await prisma.activatorLog.findFirst({
+    where: {
+      activatedby: activatedby,
+      wotaid: wotaid,
+      year: year
+    },
+    select: { id: true }
+  })
+  const act_points_yr = existingYearly ? 0 : 1
+
+  return { act_points, act_points_yr }
+}
+
+// Calculate chaser points based on existing contacts (matches PHP log_contact.php lines 54-69)
+async function calculateChaserPoints(
+  wkdby: string,
+  wotaid: number,
+  stncall: string,
+  year: number,
+  prisma: PrismaClient
+): Promise<{
+  wawpoints: number
+  points: number
+  wawpoints_yr: number
+  points_yr: number
+}> {
+  // Default: award all points
+  let wawpoints = 1
+  let points = 1
+  let wawpoints_yr = 1
+  let points_yr = 1
+
+  // Check all-time: any contact with this summit?
+  const existingWaw = await prisma.chaserLog.findFirst({
+    where: {
+      wkdby: wkdby,
+      wotaid: wotaid
+    },
+    select: { id: true }
+  })
+  if (existingWaw) wawpoints = 0
+
+  // Check all-time: any contact with this summit and activator?
+  const existingPoints = await prisma.chaserLog.findFirst({
+    where: {
+      wkdby: wkdby,
+      wotaid: wotaid,
+      stncall: stncall
+    },
+    select: { id: true }
+  })
+  if (existingPoints) points = 0
+
+  // Check yearly: any contact with this summit this year?
+  const existingWawYr = await prisma.chaserLog.findFirst({
+    where: {
+      wkdby: wkdby,
+      wotaid: wotaid,
+      year: year
+    },
+    select: { id: true }
+  })
+  if (existingWawYr) wawpoints_yr = 0
+
+  // Check yearly: any contact with this summit and activator this year?
+  const existingPointsYr = await prisma.chaserLog.findFirst({
+    where: {
+      wkdby: wkdby,
+      wotaid: wotaid,
+      stncall: stncall,
+      year: year
+    },
+    select: { id: true }
+  })
+  if (existingPointsYr) points_yr = 0
+
+  return { wawpoints, points, wawpoints_yr, points_yr }
+}
+
 // Import chaser ADIF records
 app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
   try {
@@ -392,13 +586,25 @@ app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
           continue
         }
 
-        // Check for duplicate
+        // Validate year (matches PHP log_contact.php lines 31-51)
+        const validYears = [2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
+                            2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+        if (!validYears.includes(record.year)) {
+          logger.warn({ record, year: record.year }, 'Skipping record with invalid year')
+          failed++
+          continue
+        }
+
+        // Strip /P or /M suffix from stncall (matches PHP stncall function)
+        const cleanStncall = stripPortableSuffix(record.stncall)
+
+        // Check for duplicate (using cleaned stncall)
         const existing = await prisma.chaserLog.findFirst({
           where: {
             wkdby: userCallsign,
             wotaid: record.wotaid,
             date: new Date(record.date),
-            stncall: record.stncall
+            stncall: cleanStncall
           }
         })
 
@@ -415,26 +621,64 @@ app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
           timeValue = new Date(`1970-01-01T${record.time}`)
         }
 
+        // Check for matching activator log entry to confirm the contact
+        // Match criteria: ucall (activator) = ucall (chaser), wotaid, callused (activator) = stncall (chaser), date
+        const recordDate = new Date(record.date)
+        recordDate.setHours(0, 0, 0, 0)
+
+        const matchingActivatorLog = await prisma.activatorLog.findFirst({
+          where: {
+            ucall: record.ucall,
+            wotaid: record.wotaid,
+            callused: cleanStncall,
+            date: recordDate
+          }
+        })
+
+        let confirmed = false
+        if (matchingActivatorLog) {
+          confirmed = true
+          // Update the matching activator log record to confirmed
+          await prisma.activatorLog.update({
+            where: { id: matchingActivatorLog.id },
+            data: { confirmed: true }
+          })
+          logger.info({
+            chaser: record.ucall,
+            activator: record.stncall,
+            wotaid: record.wotaid,
+            date: recordDate.toISOString().split('T')[0]
+          }, 'Contact confirmed with matching activator log')
+        }
+
+        // Calculate points based on existing contacts (matches PHP log_contact.php lines 54-69)
+        const calculatedPoints = await calculateChaserPoints(
+          userCallsign,
+          record.wotaid,
+          cleanStncall,
+          record.year,
+          prisma
+        )
+
         // Insert record
         await prisma.chaserLog.create({
           data: {
             wkdby: userCallsign,
-            ucall: record.ucall,
-            stncall: record.stncall,
+            ucall: record.ucall.substring(0, 8),
+            stncall: cleanStncall.substring(0, 12),
             wotaid: record.wotaid,
-            date: new Date(record.date),
+            date: recordDate,
             time: timeValue,
             year: record.year,
-            points: 1,
-            rpt: false,
-            wawpoints: 0,
-            points_yr: 1,
-            wawpoints_yr: 0,
-            confirmed: false
+            points: calculatedPoints.points,
+            wawpoints: calculatedPoints.wawpoints,
+            points_yr: calculatedPoints.points_yr,
+            wawpoints_yr: calculatedPoints.wawpoints_yr,
+            confirmed: confirmed
           }
         })
 
-        logger.info({ wkdby: userCallsign, wotaid: record.wotaid, stncall: record.stncall }, 'Imported chaser record')
+        logger.info({ wkdby: userCallsign, wotaid: record.wotaid, stncall: record.stncall, confirmed }, 'Imported chaser record')
         imported++
       } catch (error) {
         logger.error({ error, record }, 'Failed to import chaser record')
