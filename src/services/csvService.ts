@@ -1,5 +1,5 @@
 import {parseWotaReference} from '../utils/wotaReference'
-import type {ImportStatistics, ParsedAdif, ParseError,} from '../types/adif'
+import type {ImportStatistics, ParsedAdif, ParseError, ChaserImportRecord, ChaserImportResult} from '../types/adif'
 
 interface CsvRecord {
   version: string
@@ -12,6 +12,19 @@ interface CsvRecord {
   stationWorked: string
   s2sReference?: string
   comment?: string
+}
+
+interface ChaserCsvRecord {
+  version: string
+  chaserCallsign: string
+  column2: string  // Not used for chaser logs
+  date: string
+  time: string
+  frequency: string
+  mode: string
+  activatorCallsign: string
+  column8: string  // Optional
+  wotaReference: string  // Column 9 - the activator's summit reference
 }
 
 export async function parseCsvFile(file: File): Promise<ParsedAdif> {
@@ -277,4 +290,184 @@ function formatAdifDate(adifDate: string): string {
   const month = adifDate.substring(4, 6)
   const day = adifDate.substring(6, 8)
   return `${year}-${month}-${day}`
+}
+
+function formatCsvTime(timeStr: string): string {
+  // CSV time is in format HH:MM or HHMM
+  // Convert to HH:MM:SS format
+  const cleaned = timeStr.replace(':', '')
+  if (cleaned.length === 4) {
+    const hours = cleaned.substring(0, 2)
+    const minutes = cleaned.substring(2, 4)
+    return `${hours}:${minutes}:00`
+  }
+  return timeStr
+}
+
+/**
+ * Parse CSV file for chaser log import
+ * Column 9 must contain a valid WOTA reference
+ */
+export async function parseChaserCsvFile(file: File): Promise<ChaserImportResult> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string
+        const lines = content.split(/\r?\n/).filter(line => line.trim())
+
+        const csvRecords: ChaserCsvRecord[] = []
+        const parseErrors: ParseError[] = []
+
+        // Parse CSV lines
+        lines.forEach((line, index) => {
+          const parts = line.split(',').map(p => p.trim())
+
+          // Must have at least 10 columns (0-9) for column 9 to exist
+          if (parts.length < 10) {
+            parseErrors.push({
+              recordIndex: index,
+              message: `Line ${index + 1}: Insufficient columns (expected at least 10 for chaser log, got ${parts.length})`,
+            })
+            return
+          }
+
+          if (parts[0] !== 'V2') {
+            parseErrors.push({
+              recordIndex: index,
+              message: `Line ${index + 1}: Invalid version "${parts[0]}" (expected V2)`,
+            })
+            return
+          }
+
+          csvRecords.push({
+            version: parts[0]!,
+            chaserCallsign: parts[1]!,
+            column2: parts[2]!,
+            date: parts[3]!,
+            time: parts[4]!,
+            frequency: parts[5]!,
+            mode: parts[6]!,
+            activatorCallsign: parts[7]!,
+            column8: parts[8]!,
+            wotaReference: parts[9]!,  // Column 9 - the critical field
+          })
+        })
+
+        // Convert SOTA references in column 9 to WOTA if needed
+        await convertChaserSotaToWota(csvRecords)
+
+        // Convert to ChaserImportRecord format
+        const records: ChaserImportRecord[] = []
+
+        csvRecords.forEach((csvRecord, index) => {
+          const validationErrors: string[] = []
+
+          // Validate WOTA reference in column 9
+          const wotaRef = csvRecord.wotaReference.toUpperCase()
+          let wotaId: number | null = null
+
+          if (!wotaRef) {
+            validationErrors.push('Column 9 (WOTA reference) is required')
+          } else if (!wotaRef.startsWith('LDW-') && !wotaRef.startsWith('LDO-')) {
+            validationErrors.push(`Column 9 must contain a valid WOTA reference (LDW-xxx or LDO-xxx), got: ${wotaRef}`)
+          } else {
+            wotaId = parseWotaReference(wotaRef)
+            if (wotaId === null) {
+              validationErrors.push(`Invalid WOTA reference format: ${wotaRef}`)
+            }
+          }
+
+          // Validate required fields
+          if (!csvRecord.chaserCallsign) {
+            validationErrors.push('Chaser callsign (column 1) is required')
+          }
+
+          if (!csvRecord.activatorCallsign) {
+            validationErrors.push('Activator callsign (column 7) is required')
+          }
+
+          if (!csvRecord.date) {
+            validationErrors.push('Date (column 3) is required')
+          }
+
+          // Parse date
+          let formattedDate = ''
+          let year = 0
+          try {
+            const adifDate = parseDateToAdifFormat(csvRecord.date)
+            formattedDate = formatAdifDate(adifDate)
+            year = parseInt(adifDate.substring(0, 4))
+          } catch (error) {
+            validationErrors.push(`Invalid date format: ${csvRecord.date}`)
+          }
+
+          // Validate year (2009-2026)
+          const validYears = [2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
+                              2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+          if (year && !validYears.includes(year)) {
+            validationErrors.push(`Invalid year: ${year}. Must be between 2009-2026`)
+          }
+
+          records.push({
+            ucall: csvRecord.chaserCallsign,
+            stncall: csvRecord.activatorCallsign,
+            wotaRef: wotaRef,
+            wotaid: wotaId || undefined,
+            date: formattedDate,
+            time: csvRecord.time ? formatCsvTime(csvRecord.time) : undefined,
+            year,
+            isValid: validationErrors.length === 0,
+            validationErrors
+          })
+        })
+
+        const validRecords = records.filter(r => r.isValid).length
+
+        resolve({
+          records,
+          totalRecords: records.length,
+          validRecords,
+          invalidRecords: records.length - validRecords
+        })
+      } catch (error) {
+        reject(new Error(`Failed to parse chaser CSV file: ${error}`))
+      }
+    }
+
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'))
+    }
+
+    reader.readAsText(file)
+  })
+}
+
+async function convertChaserSotaToWota(records: ChaserCsvRecord[]): Promise<void> {
+  const { apiClient } = await import('./api')
+
+  for (const record of records) {
+    // Convert WOTA reference in column 9 from SOTA to WOTA if needed
+    const ref = record.wotaReference.toUpperCase()
+    if (ref.startsWith('G/LD-')) {
+      try {
+        console.log(`Looking up SOTA reference in column 9: ${record.wotaReference}`)
+        const summit = await apiClient.lookupSotaReference(record.wotaReference)
+        if (summit) {
+          console.log(`Found summit for ${record.wotaReference}: ${summit.name} (wotaid: ${summit.wotaid})`)
+          // Convert to WOTA format
+          if (summit.wotaid <= 214) {
+            record.wotaReference = `LDW-${String(summit.wotaid).padStart(3, '0')}`
+          } else {
+            record.wotaReference = `LDO-${String(summit.wotaid - 214).padStart(3, '0')}`
+          }
+        } else {
+          console.warn(`No summit found in database for SOTA reference: ${record.wotaReference}`)
+        }
+      } catch (error) {
+        console.error(`Error looking up SOTA reference ${record.wotaReference}:`, error)
+      }
+    }
+  }
 }

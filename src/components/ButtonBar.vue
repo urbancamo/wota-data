@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { showNotify, showDialog } from 'vant'
 import { parseAdifFile, calculateStatistics as calculateAdifStatistics, parseChaserAdifFile, validateChaserWotaRefs, checkChaserDuplicates } from '../services/adifService'
-import { parseCsvFile, calculateStatistics as calculateCsvStatistics } from '../services/csvService'
+import { parseCsvFile, calculateStatistics as calculateCsvStatistics, parseChaserCsvFile } from '../services/csvService'
 import type { ParsedAdif, ChaserImportRecord, ChaserImportResult } from '../types/adif'
 import ChaserAdifPreviewModal from './ChaserAdifPreviewModal.vue'
 
@@ -191,7 +191,7 @@ async function handleChaserAdifFileSelect(event: Event) {
 
   try {
     showNotify({
-      type: 'default',
+      type: 'primary',
       message: 'Parsing ADIF file...',
       duration: 1000,
     })
@@ -208,7 +208,7 @@ async function handleChaserAdifFileSelect(event: Event) {
     }
 
     showNotify({
-      type: 'default',
+      type: 'primary',
       message: 'Validating WOTA references...',
       duration: 1000,
     })
@@ -223,7 +223,7 @@ async function handleChaserAdifFileSelect(event: Event) {
     }
 
     showNotify({
-      type: 'default',
+      type: 'primary',
       message: 'Checking for duplicates...',
       duration: 1000,
     })
@@ -268,11 +268,106 @@ async function handleChaserAdifFileSelect(event: Event) {
   }
 }
 
+async function handleChaserCsvFileSelect(event: Event) {
+  console.log('Chaser CSV file select triggered')
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+
+  if (!file) {
+    console.log('No file selected')
+    return
+  }
+
+  isProcessing.value = true
+
+  try {
+    showNotify({
+      type: 'primary',
+      message: 'Parsing CSV file...',
+      duration: 1000,
+    })
+
+    // Parse CSV file
+    let result: ChaserImportResult = await parseChaserCsvFile(file)
+
+    if (result.totalRecords === 0) {
+      showNotify({
+        type: 'danger',
+        message: 'No records found in CSV file',
+      })
+      return
+    }
+
+    showNotify({
+      type: 'primary',
+      message: 'Validating WOTA references...',
+      duration: 1000,
+    })
+
+    // Validate WOTA references
+    try {
+      result.records = await validateChaserWotaRefs(result.records)
+      console.log('WOTA reference validation complete')
+    } catch (validationError) {
+      console.error('WOTA validation error:', validationError)
+      // Continue with unvalidated records
+    }
+
+    showNotify({
+      type: 'primary',
+      message: 'Checking for duplicates...',
+      duration: 1000,
+    })
+
+    // Check for duplicates
+    try {
+      result.records = await checkChaserDuplicates(result.records)
+      console.log('Duplicate check complete')
+    } catch (duplicateError) {
+      console.error('Duplicate check error:', duplicateError)
+      // Continue without duplicate checking
+    }
+
+    // Count duplicates
+    const duplicates = result.records.filter(r => r.isDuplicate).length
+
+    // Update stats
+    chaserImportStats.value = {
+      total: result.totalRecords,
+      valid: result.validRecords,
+      invalid: result.invalidRecords,
+      duplicates: duplicates
+    }
+
+    // Store records and show preview
+    chaserImportRecords.value = result.records
+    showChaserPreview.value = true
+
+    console.log('Showing chaser CSV preview modal:', {
+      total: result.totalRecords,
+      valid: result.validRecords,
+      invalid: result.invalidRecords,
+      duplicates
+    })
+
+  } catch (error) {
+    console.error('CSV parsing error:', error)
+    showNotify({
+      type: 'danger',
+      message: error instanceof Error ? error.message : 'Failed to parse chaser CSV file',
+    })
+  } finally {
+    isProcessing.value = false
+    // Reset file input
+    if (target) target.value = ''
+  }
+}
+
 async function handleChaserImportConfirm(validRecords: ChaserImportRecord[]) {
   try {
     isProcessing.value = true
     showNotify({
-      type: 'default',
+      type: 'primary',
       message: 'Importing records...',
       duration: 2000,
     })
@@ -315,26 +410,6 @@ async function handleChaserImportConfirm(validRecords: ChaserImportRecord[]) {
   } finally {
     isProcessing.value = false
   }
-}
-
-async function handleChaserCsvFileSelect(event: Event) {
-  console.log('Chaser CSV file select triggered')
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-
-  if (!file) {
-    console.log('No file selected')
-    return
-  }
-
-  // TODO: Implement chaser CSV import
-  showNotify({
-    type: 'warning',
-    message: 'Chaser CSV import not yet implemented',
-  })
-
-  // Reset file input
-  if (target) target.value = ''
 }
 
 // Expose methods for parent component
