@@ -184,15 +184,20 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
         const cleanCallused = stripPortableSuffix(record.callused)
 
         // Parse date to compare only the date part (not time)
+        // Use UTC to avoid timezone offset issues
         const recordDate = new Date(record.date)
-        recordDate.setHours(0, 0, 0, 0)
+        const utcDate = new Date(Date.UTC(
+          recordDate.getUTCFullYear(),
+          recordDate.getUTCMonth(),
+          recordDate.getUTCDate()
+        ))
 
         // Check if this is a duplicate (matches PHP log_activation.php lines 53-54)
         // Include activatedby, wotaid, stncall, date, band, mode
         const existing = await prisma.activatorLog.findFirst({
           where: {
             activatedby: userCallsign,
-            date: recordDate,
+            date: utcDate,
             wotaid: record.wotaid,
             stncall: record.stncall,
             band: record.band || null,
@@ -201,7 +206,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
         })
 
         if (existing) {
-          logger.info({ recordIndex: i, callused: record.callused, stncall: record.stncall, date: recordDate.toISOString().split('T')[0] }, 'Skipping duplicate record')
+          logger.info({ recordIndex: i, callused: record.callused, stncall: record.stncall, date: utcDate.toISOString().split('T')[0] }, 'Skipping duplicate record')
           skipped++
           continue
         }
@@ -213,7 +218,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
             ucall: record.ucall,
             wotaid: record.wotaid,
             stncall: cleanCallused,
-            date: recordDate
+            date: utcDate
           }
         })
 
@@ -229,7 +234,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
             activator: cleanCallused,
             chaser: record.ucall,
             wotaid: record.wotaid,
-            date: recordDate.toISOString().split('T')[0]
+            date: utcDate.toISOString().split('T')[0]
           }, 'Contact confirmed with matching chaser log')
         }
 
@@ -239,7 +244,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
             activatedby: userCallsign, // Use authenticated user's username
             callused: cleanCallused.substring(0, 8),
             wotaid: record.wotaid,
-            date: recordDate,
+            date: utcDate,
             time: record.time || null,
             year: record.year,
             stncall: record.stncall,
@@ -260,19 +265,19 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
           select: { last_act_date: true }
         })
 
-        if (!summit?.last_act_date || recordDate >= summit.last_act_date) {
+        if (!summit?.last_act_date || utcDate >= summit.last_act_date) {
           await prisma.summit.update({
             where: { wotaid: record.wotaid },
             data: {
               last_act_by: cleanCallused,
-              last_act_date: recordDate
+              last_act_date: utcDate
             }
           })
 
           logger.info({
             summit: record.wotaid,
             activator: cleanCallused,
-            date: recordDate.toISOString().split('T')[0]
+            date: utcDate.toISOString().split('T')[0]
           }, 'Updated summit last activation details')
         }
 
@@ -336,7 +341,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
 app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
   try {
     const { records } = req.body
-    const userCallsign = req.user?.username?.toUpperCase()
+    const userCallsign = req.session.username
 
     if (!userCallsign) {
       return res.status(401).json({ error: 'User not authenticated' })
@@ -385,6 +390,16 @@ app.post('/data/api/import/check-duplicates', requireAuth, async (req, res) => {
       })
 
       if (exactDuplicate) {
+        logger.info({
+          userCallsign,
+          recordDate: recordDate.toISOString().split('T')[0],
+          wotaid: record.wotaid,
+          stncall: record.stncall,
+          callused: record.callused,
+          band: record.band,
+          mode: record.mode,
+          duplicateId: exactDuplicate.id
+        }, 'Found exact duplicate record')
         duplicateFlags.push(true)
         possibleDuplicateFlags.push(false)
         continue
@@ -623,15 +638,20 @@ app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
 
         // Check for matching activator log entry to confirm the contact
         // Match criteria: ucall (activator) = ucall (chaser), wotaid, callused (activator) = stncall (chaser), date
+        // Use UTC to avoid timezone offset issues
         const recordDate = new Date(record.date)
-        recordDate.setHours(0, 0, 0, 0)
+        const utcDate = new Date(Date.UTC(
+          recordDate.getUTCFullYear(),
+          recordDate.getUTCMonth(),
+          recordDate.getUTCDate()
+        ))
 
         const matchingActivatorLog = await prisma.activatorLog.findFirst({
           where: {
             ucall: record.ucall,
             wotaid: record.wotaid,
             callused: cleanStncall,
-            date: recordDate
+            date: utcDate
           }
         })
 
@@ -647,7 +667,7 @@ app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
             chaser: record.ucall,
             activator: record.stncall,
             wotaid: record.wotaid,
-            date: recordDate.toISOString().split('T')[0]
+            date: utcDate.toISOString().split('T')[0]
           }, 'Contact confirmed with matching activator log')
         }
 
@@ -667,7 +687,7 @@ app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
             ucall: record.ucall.substring(0, 8),
             stncall: cleanStncall.substring(0, 12),
             wotaid: record.wotaid,
-            date: recordDate,
+            date: utcDate,
             time: timeValue,
             year: record.year,
             points: calculatedPoints.points,

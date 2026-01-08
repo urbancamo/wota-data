@@ -8,6 +8,7 @@ import ChaserAdifPreviewModal from './ChaserAdifPreviewModal.vue'
 
 const emit = defineEmits<{
   (e: 'adifParsed', data: ParsedAdif): void
+  (e: 'chaserImportComplete'): void
 }>()
 
 const adifFileInput = ref<HTMLInputElement | null>(null)
@@ -401,6 +402,11 @@ async function handleChaserImportConfirm(validRecords: ChaserImportRecord[]) {
       type: 'success',
       message: `Successfully imported ${result.imported} chaser records`,
     })
+
+    // Emit event to refresh chaser contacts view
+    if (result.imported > 0) {
+      emit('chaserImportComplete')
+    }
   } catch (error) {
     console.error('Chaser import error:', error)
     showNotify({

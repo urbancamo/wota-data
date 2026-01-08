@@ -69,23 +69,25 @@ async function convertSotaToWota(records: AdifRecord[]): Promise<void> {
 
   for (const record of records) {
     // Convert MY_SOTA_REF (your station's summit) to WOTA
-    if (!record.my_sig_info) {
-      const sotaRef = extractSotaReference(record)
-      if (sotaRef && sotaRef.toUpperCase().startsWith('G/LD')) {
-        try {
-          console.log(`Looking up MY_SOTA_REF: ${sotaRef}`)
-          const summit = await apiClient.lookupSotaReference(sotaRef)
-          if (summit) {
-            console.log(`Found summit for ${sotaRef}: ${summit.name} (wotaid: ${summit.wotaid})`)
-            // Set the WOTA reference for your station
-            record.my_sig_info = summit.wotaid.toString()
-            record.my_sig = 'WOTA'
-          } else {
-            console.warn(`No summit found in database for SOTA reference: ${sotaRef}`)
-          }
-        } catch (error) {
-          console.error(`Error looking up SOTA reference ${sotaRef}:`, error)
+    // Priority: MY_SOTA_REF takes precedence over MY_SIG_INFO
+    const sotaRef = extractSotaReference(record)
+    console.log(`Record for ${record.call}: my_sig="${record.my_sig}", my_sig_info="${record.my_sig_info}", my_sota_ref="${record.my_sota_ref}"`)
+
+    if (sotaRef && sotaRef.toUpperCase().startsWith('G/LD')) {
+      try {
+        console.log(`Looking up MY_SOTA_REF: ${sotaRef}`)
+        const summit = await apiClient.lookupSotaReference(sotaRef)
+        if (summit) {
+          console.log(`Found summit for ${sotaRef}: ${summit.name} (wotaid: ${summit.wotaid})`)
+          // Set the WOTA reference for your station
+          // This overrides any existing MY_SIG_INFO (like POTA references)
+          record.my_sig_info = summit.wotaid.toString()
+          record.my_sig = 'WOTA'
+        } else {
+          console.warn(`No summit found in database for SOTA reference: ${sotaRef}`)
         }
+      } catch (error) {
+        console.error(`Error looking up SOTA reference ${sotaRef}:`, error)
       }
     }
 
@@ -182,12 +184,13 @@ export function mapToActivatorLog(record: AdifRecord | undefined): ActivatorLogI
   }
 
   // Parse date (format: YYYYMMDD)
+  // Use UTC to avoid timezone offset issues when storing in database
   const dateStr = record.qso_date
-  const date = new Date(
+  const date = new Date(Date.UTC(
     parseInt(dateStr.substring(0, 4)),
     parseInt(dateStr.substring(4, 6)) - 1,
     parseInt(dateStr.substring(6, 8))
-  )
+  ))
 
   // Parse time (format: HHMM or HHMMSS)
   let time: Date | undefined

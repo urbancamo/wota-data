@@ -169,6 +169,11 @@ onUnmounted(() => {
     clearTimeout(resizeTimeout)
   }
 })
+
+// Expose loadContacts method for parent component to trigger refresh
+defineExpose({
+  refresh: loadContacts
+})
 </script>
 
 <template>
@@ -398,6 +403,13 @@ onUnmounted(() => {
 .pagination-info {
   font-size: 14px;
   color: #646566;
+}
+
+/* Fix pagination Previous/Next button width */
+.pagination-controls :deep(.van-pagination__item--prev),
+.pagination-controls :deep(.van-pagination__item--next) {
+  min-width: 70px;
+  padding: 0 8px;
 }
 
 @media (max-width: 768px) {

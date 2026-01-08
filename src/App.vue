@@ -18,6 +18,8 @@ const { username } = useAuth()
 
 const activeView = ref(0)
 const buttonBarRef = ref<InstanceType<typeof ButtonBar> | null>(null)
+const activatorContactsRef = ref<InstanceType<typeof ContactsView> | null>(null)
+const chaserContactsRef = ref<InstanceType<typeof ContactsView> | null>(null)
 const showActions = ref(false)
 
 const actions: ActionSheetAction[] = [
@@ -77,6 +79,11 @@ function handleAdifParsed(data: ParsedAdif) {
 function handlePreviewClose() {
   showPreview.value = false
   importErrors.value = undefined // Clear errors when closing
+}
+
+function handleChaserImportComplete() {
+  // Refresh chaser contacts view after successful import
+  chaserContactsRef.value?.refresh()
 }
 
 async function handleConfirmImport() {
@@ -142,6 +149,11 @@ async function handleConfirmImport() {
     messageHtml += `<div style="color: #969799; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">Total records processed: ${totalRecords}</div>
       </div>
     </div>`
+
+    // Refresh contacts view after successful import
+    if (importedCount > 0) {
+      activatorContactsRef.value?.refresh()
+    }
 
     showDialog({
       title: importedCount > 0 ? 'Import Complete' : 'Import Failed',
@@ -226,6 +238,7 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
         ref="buttonBarRef"
         style="display: none"
         @adif-parsed="handleAdifParsed"
+        @chaser-import-complete="handleChaserImportComplete"
       />
 
       <!-- Page Content -->
@@ -239,11 +252,11 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
           </van-tab>
 
           <van-tab title="Activator Contacts">
-            <ContactsView contact-type="activator" />
+            <ContactsView ref="activatorContactsRef" contact-type="activator" />
           </van-tab>
 
           <van-tab title="Chaser Contacts">
-            <ContactsView contact-type="chaser" />
+            <ContactsView ref="chaserContactsRef" contact-type="chaser" />
           </van-tab>
         </van-tabs>
       </div>
