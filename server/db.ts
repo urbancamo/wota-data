@@ -1,4 +1,3 @@
-// @ts-expect-error - cookie-parser uses CommonJS export
 import mysql from 'mysql2/promise'
 import { PrismaClient } from '@prisma/client'
 

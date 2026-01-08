@@ -15,7 +15,26 @@ import { requireAuth } from './middleware/authMiddleware'
 import { logger } from './logger'
 import { loggingMiddleware } from './middleware/loggingMiddleware'
 import { stripPortableSuffix } from '../src/services/adifService'
-import {PrismaClient} from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+
+// Type definitions
+type ActivatorLogExport = {
+  id: number
+  activatedby: string
+  callused: string
+  wotaid: number
+  date: Date
+  time: Date | null
+  year: number
+  stncall: string
+  ucall: string
+  rpt: string | null
+  s2s: string | null
+  confirmed: boolean | null
+  band: string | null
+  frequency: string | null
+  mode: string | null
+}
 
 // Load environment variables
 dotenv.config()
@@ -47,7 +66,6 @@ app.use(session({
   cookie: {
     secure: false, // Set to true in production with HTTPS
     httpOnly: true,
-    maxAge: null, // Non-expiring session
     sameSite: 'lax'
   }
 }))
@@ -799,9 +817,9 @@ app.post('/data/api/summits/validate', async (req, res) => {
       }
     })
 
-    const validRefs = summits.map(s => ({ id: s.wotaid, ref: s.ref, name: s.name }))
+    const validRefs = summits.map((s: { wotaid: any; ref: any; name: any }) => ({ id: s.wotaid, ref: s.ref, name: s.name }))
     const invalidRefs = references.filter(
-      ref => !summits.find(s => s.ref === ref)
+      ref => !summits.find((s: { ref: any }) => s.ref === ref)
     )
 
     res.json({ valid: validRefs, invalid: invalidRefs })
@@ -863,7 +881,7 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
 
     // Get summit details for the recent activations
     const recentSummits = await Promise.all(
-      recentActivations.map(async (activation) => {
+      recentActivations.map(async (activation: { wotaid: any; date: any; callused: any }) => {
         const summit = await prisma.summit.findUnique({
           where: { wotaid: activation.wotaid },
           select: { wotaid: true, name: true },
@@ -940,7 +958,7 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
       select: { year: true },
       orderBy: { year: 'desc' },
     })
-    const availableYears = Array.from(new Set(allRecords.map(r => r.year))).sort((a, b) => (b as number) - (a as number))
+    const availableYears = Array.from(new Set(allRecords.map((r: { year: any }) => r.year))).sort((a, b) => (b as number) - (a as number))
 
     // Get total count with filter
     const total = await prisma.activatorLog.count({
@@ -960,7 +978,7 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
 
     // Get summit names for each contact
     const contactsWithSummits = await Promise.all(
-      contacts.map(async (contact) => {
+      contacts.map(async (contact: { wotaid: any }) => {
         const summit = await prisma.summit.findUnique({
           where: { wotaid: contact.wotaid },
           select: { name: true },
@@ -1016,7 +1034,7 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
       select: { year: true },
       orderBy: { year: 'desc' },
     })
-    const availableYears = Array.from(new Set(allRecords.map(r => r.year))).sort((a, b) => (b as number) - (a as number));
+    const availableYears = Array.from(new Set(allRecords.map((r: { year: any }) => r.year))).sort((a, b) => (b as number) - (a as number));
 
     // Get total count with filter
     const total = await prisma.chaserLog.count({
@@ -1036,7 +1054,7 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
 
     // Get summit names for each contact
     const contactsWithSummits = await Promise.all(
-      contacts.map(async (contact) => {
+      contacts.map(async (contact: { wotaid: any }) => {
         const summit = await prisma.summit.findUnique({
           where: { wotaid: contact.wotaid },
           select: { name: true },
@@ -1182,12 +1200,12 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
     logger.info({ count: logs.length }, 'Export activator - found logs')
 
     // Get summit names for all unique WOTA IDs
-    const uniqueWotaIds = Array.from(new Set(logs.map(log => log.wotaid)))
+    const uniqueWotaIds = Array.from(new Set(logs.map((log: { wotaid: number }) => log.wotaid)))
     const summits = await prisma.summit.findMany({
       where: { wotaid: { in: uniqueWotaIds } },
       select: { wotaid: true, name: true },
     })
-    const summitMap = new Map(summits.map(s => [s.wotaid, s.name]))
+    const summitMap = new Map(summits.map((s: { wotaid: any; name: any }) => [s.wotaid, s.name]))
 
     // Create CSV header
     const headers = [
@@ -1210,7 +1228,7 @@ app.get('/data/api/export/activator', requireAuth, async (req, res) => {
     ]
 
     // Create CSV rows
-    const rows = logs.map((log) => [
+    const rows = logs.map((log: ActivatorLogExport) => [
       log.id,
       log.activatedby,
       log.callused,
@@ -1292,12 +1310,12 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
     logger.info({ count: logs.length }, 'Export chaser - found logs')
 
     // Get summit names for all unique WOTA IDs
-    const uniqueWotaIds = Array.from(new Set(logs.map(log => log.wotaid)))
+    const uniqueWotaIds = Array.from(new Set(logs.map((log: { wotaid: number }) => log.wotaid)))
     const summits = await prisma.summit.findMany({
       where: { wotaid: { in: uniqueWotaIds } },
       select: { wotaid: true, name: true },
     })
-    const summitMap = new Map(summits.map(s => [s.wotaid, s.name]))
+    const summitMap = new Map(summits.map((s: { wotaid: number; name: string }) => [s.wotaid, s.name]))
 
     // Create CSV header
     const headers = [
@@ -1319,7 +1337,7 @@ app.get('/data/api/export/chaser', requireAuth, async (req, res) => {
     ]
 
     // Create CSV rows
-    const rows = logs.map((log) => [
+    const rows = logs.map((log: { id: any; wkdby: any; ucall: any; wotaid: number; date: { toISOString: () => string }; time: { toISOString: () => string }; year: any; stncall: any; rpt: any; points: any; wawpoints: any; points_yr: any; wawpoints_yr: any; confirmed: any }) => [
       log.id,
       log.wkdby,
       log.ucall,
