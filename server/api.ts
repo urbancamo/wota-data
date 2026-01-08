@@ -15,6 +15,7 @@ import { requireAuth } from './middleware/authMiddleware'
 import { logger } from './logger'
 import { loggingMiddleware } from './middleware/loggingMiddleware'
 import { stripPortableSuffix } from '../src/services/adifService'
+import {PrismaClient} from "@prisma/client";
 
 // Load environment variables
 dotenv.config()
@@ -301,7 +302,7 @@ app.post('/data/api/import/adif', requireAuth, async (req, res) => {
 
     if (results.length > 0) {
       // Group by unique activations
-      for (const activationKey of uniqueActivations) {
+      for (const activationKey of Array.from(uniqueActivations)) {
         const [wotaidStr, yearStr] = activationKey.split('-')
         const wotaid = parseInt(wotaidStr)
         const year = parseInt(yearStr)
