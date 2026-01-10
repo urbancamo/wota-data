@@ -42,17 +42,38 @@ const logger = isDevelopment
               mkdir: true,
             },
           },
+          {
+            target: path.join(__dirname, 'transports', 'pino-database-transport.js'),
+            level: logLevel,
+          },
         ],
       },
     })
-  : pino(
-      {
-        level: logLevel,
+  : pino({
+      level: logLevel,
+      transport: {
+        targets: [
+          {
+            target: 'pino/file',
+            level: logLevel,
+            options: {
+              destination: 1, // stdout
+            },
+          },
+          {
+            target: 'pino/file',
+            level: logLevel,
+            options: {
+              destination: logFilePath,
+              mkdir: true,
+            },
+          },
+          {
+            target: path.join(__dirname, 'transports', 'pino-database-transport.js'),
+            level: logLevel,
+          },
+        ],
       },
-      pino.multistream([
-        { stream: process.stdout },
-        { stream: pino.destination(logFilePath) },
-      ])
-    )
+    })
 
 export { logger }

@@ -9,18 +9,20 @@ import ExportFilterDialog from './components/ExportFilterDialog.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import UserStatisticsPanel from './components/UserStatisticsPanel.vue'
 import ContactsView from './components/ContactsView.vue'
+import LogsView from './components/LogsView.vue'
 import { mapToActivatorLog, calculateStatistics } from './services/adifService'
 import { apiClient, type ExportFilters } from './services/api'
 import type { ParsedAdif, ImportStatistics } from './types/adif'
 import { useAuth } from './composables/useAuth'
 
-const { username } = useAuth()
+const { username, isAdmin } = useAuth()
 
 const activeView = ref(0)
 const buttonBarRef = ref<InstanceType<typeof ButtonBar> | null>(null)
 const activatorContactsRef = ref<InstanceType<typeof ContactsView> | null>(null)
 const chaserContactsRef = ref<InstanceType<typeof ContactsView> | null>(null)
 const showActions = ref(false)
+const showAdminActions = ref(false)
 
 const actions: ActionSheetAction[] = [
   { name: 'Import Activator ADIF', subname: 'Import activator contacts from ADIF file' },
@@ -29,6 +31,10 @@ const actions: ActionSheetAction[] = [
   { name: 'Import Chaser CSV', subname: 'Import chaser contacts from CSV file' },
   { name: 'Export Activator CSV', subname: 'Export activator contacts' },
   { name: 'Export Chaser CSV', subname: 'Export chaser contacts' },
+]
+
+const adminActions: ActionSheetAction[] = [
+  { name: 'View Logs', subname: 'View system logs' },
 ]
 
 function handleActionSelect(action: ActionSheetAction, index: number) {
@@ -56,6 +62,17 @@ function handleActionSelect(action: ActionSheetAction, index: number) {
     case 5:
       exportType.value = 'chaser'
       showExportFilter.value = true
+      break
+  }
+}
+
+function handleAdminActionSelect(action: ActionSheetAction, index: number) {
+  showAdminActions.value = false
+
+  switch (index) {
+    case 0:
+      // Navigate to Logs tab (tab index 3)
+      activeView.value = 3
       break
   }
 }
@@ -220,13 +237,23 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
         placeholder
       >
         <template #left>
-          <van-button
-            size="small"
-            type="primary"
-            @click="showActions = true"
-          >
-            Actions
-          </van-button>
+          <div style="display: flex; gap: 8px;">
+            <van-button
+              size="small"
+              type="primary"
+              @click="showActions = true"
+            >
+              Actions
+            </van-button>
+            <van-button
+              v-if="isAdmin"
+              size="small"
+              type="warning"
+              @click="showAdminActions = true"
+            >
+              Admin
+            </van-button>
+          </div>
         </template>
         <template #right>
           <LogoutButton />
@@ -258,6 +285,10 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
           <van-tab title="Chaser Contacts">
             <ContactsView ref="chaserContactsRef" contact-type="chaser" />
           </van-tab>
+
+          <van-tab v-if="isAdmin" title="Logs">
+            <LogsView />
+          </van-tab>
         </van-tabs>
       </div>
 
@@ -287,6 +318,15 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
         cancel-text="Cancel"
         close-on-click-action
         @select="handleActionSelect"
+      />
+
+      <!-- Admin Actions Menu -->
+      <van-action-sheet
+        v-model:show="showAdminActions"
+        :actions="adminActions"
+        cancel-text="Cancel"
+        close-on-click-action
+        @select="handleAdminActionSelect"
       />
     </div>
   </AuthGuard>

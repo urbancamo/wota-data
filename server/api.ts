@@ -95,15 +95,21 @@ app.post('/data/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Account has expired' })
     }
 
+    // Check if user is admin
+    const adminUsers = process.env.ADMIN_USERS?.split(',').map(u => u.trim().toUpperCase()) || []
+    const isAdmin = adminUsers.includes(user.username.toUpperCase())
+
     // Set session data
     req.session.userId = user.id
     req.session.username = user.username
+    req.session.isAdmin = isAdmin
 
     res.json({
       success: true,
       user: {
         id: user.id,
-        username: user.username
+        username: user.username,
+        isAdmin: isAdmin
       }
     })
   } catch (error) {
@@ -143,7 +149,8 @@ app.get('/data/api/auth/session', (req, res) => {
       authenticated: true,
       user: {
         id: req.session.userId,
-        username: req.session.username
+        username: req.session.username,
+        isAdmin: req.session.isAdmin || false
       }
     })
   } else {
@@ -1379,6 +1386,58 @@ app.get('/data/api/cms/test', async (req, res) => {
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method }, 'Error querying CMS database')
     res.status(500).json({ error: 'Failed to query CMS database' })
+  }
+})
+
+// Admin-only endpoint to fetch logs
+app.get('/data/api/admin/logs', requireAuth, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.session.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' })
+    }
+
+    // Parse pagination parameters
+    const page = parseInt(req.query.page as string) || 1
+    const pageSize = parseInt(req.query.pageSize as string) || 50
+    const level = req.query.level as string | undefined
+    const skip = (page - 1) * pageSize
+
+    // Build where clause
+    const whereClause: any = {}
+    if (level) {
+      whereClause.level = level
+    }
+
+    // Get total count
+    const total = await prisma.log.count({ where: whereClause })
+
+    // Get logs
+    const logs = await prisma.log.findMany({
+      where: whereClause,
+      orderBy: { timestamp: 'desc' },
+      skip,
+      take: pageSize
+    })
+
+    // Convert BigInt to string for JSON serialization
+    const logsWithStringIds = logs.map(log => ({
+      ...log,
+      id: log.id.toString()
+    }))
+
+    res.json({
+      logs: logsWithStringIds,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize)
+      }
+    })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching logs')
+    res.status(500).json({ error: 'Failed to fetch logs' })
   }
 })
 

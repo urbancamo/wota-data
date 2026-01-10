@@ -4,6 +4,7 @@ import { apiClient } from '../services/api'
 interface User {
   id: number
   username: string
+  isAdmin?: boolean
 }
 
 // Global state (singleton pattern for authentication)
@@ -14,6 +15,7 @@ const error = ref<string | null>(null)
 export function useAuth() {
   const isAuthenticated = computed(() => currentUser.value !== null)
   const username = computed(() => currentUser.value?.username || '')
+  const isAdmin = computed(() => currentUser.value?.isAdmin || false)
 
   async function login(username: string, password: string): Promise<boolean> {
     error.value = null
@@ -72,6 +74,7 @@ export function useAuth() {
     isChecking,
     error,
     username,
+    isAdmin,
 
     // Actions
     login,
