@@ -25,7 +25,7 @@ function extractLogData(log) {
     let errorMessage = null;
     let errorStack = null;
     if (error) {
-        if (typeof error === 'object' && error !== null) {
+        if (typeof error === 'object') {
             errorMessage = error.message || JSON.stringify(error);
             errorStack = error.stack || null;
         }

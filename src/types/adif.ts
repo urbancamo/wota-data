@@ -92,11 +92,15 @@ export interface DatabaseStatistics {
 
 export interface Summit {
   wotaid: number
-  sotaid?: number
+  sotaid?: number | null
   name: string
   reference: string
   height: number
   book: string
+  last_act_by?: string | null
+  last_act_date?: string | null
+  humpid?: number | null
+  gridid?: string | null
 }
 
 export interface ChaserImportRecord {

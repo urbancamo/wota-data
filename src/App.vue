@@ -10,6 +10,7 @@ import StatisticsPanel from './components/StatisticsPanel.vue'
 import UserStatisticsPanel from './components/UserStatisticsPanel.vue'
 import ContactsView from './components/ContactsView.vue'
 import LogsView from './components/LogsView.vue'
+import SummitsView from './components/SummitsView.vue'
 import { mapToActivatorLog, calculateStatistics } from './services/adifService'
 import { apiClient, type ExportFilters } from './services/api'
 import type { ParsedAdif, ImportStatistics } from './types/adif'
@@ -71,8 +72,8 @@ function handleAdminActionSelect(action: ActionSheetAction, index: number) {
 
   switch (index) {
     case 0:
-      // Navigate to Logs tab (tab index 3)
-      activeView.value = 3
+      // Navigate to Logs tab (tab index 4: Statistics=0, Activator=1, Chaser=2, Summits=3, Logs=4)
+      activeView.value = 4
       break
   }
 }
@@ -284,6 +285,10 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
 
           <van-tab title="Chaser Contacts">
             <ContactsView ref="chaserContactsRef" contact-type="chaser" />
+          </van-tab>
+
+          <van-tab title="Summits">
+            <SummitsView />
           </van-tab>
 
           <van-tab v-if="isAdmin" title="Logs">

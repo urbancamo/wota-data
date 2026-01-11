@@ -178,6 +178,19 @@ export const apiClient = {
     return summits
   },
 
+  async getSummitActivations(wotaid: number): Promise<any[]> {
+    const response = await fetch(`${API_BASE_URL}/summits/${wotaid}/activations`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch summit activations')
+    }
+
+    return response.json()
+  },
+
   async lookupSotaReference(sotaRef: string): Promise<Summit | null> {
     const response = await fetch(`${API_BASE_URL}/summits/sota/${encodeURIComponent(sotaRef)}`, {
       method: 'GET',

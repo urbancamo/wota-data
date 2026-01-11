@@ -767,6 +767,37 @@ app.get('/data/api/summits', requireAuth, async (req, res) => {
   }
 })
 
+// Get all activations for a specific summit (one row per unique activator and date)
+app.get('/data/api/summits/:wotaid/activations', requireAuth, async (req, res) => {
+  try {
+    const wotaid = parseInt(req.params.wotaid, 10)
+
+    if (isNaN(wotaid)) {
+      return res.status(400).json({ error: 'Invalid WOTA ID' })
+    }
+
+    // Get distinct activations (one row per activator and date combination)
+    const activations = await prisma.$queryRaw<Array<{
+      date: Date
+      callused: string
+      activatedby: string
+    }>>`
+      SELECT DISTINCT
+        DATE(date) as date,
+        callused,
+        activatedby
+      FROM activator_log
+      WHERE wotaid = ${wotaid}
+      ORDER BY date DESC
+    `
+
+    res.json(activations)
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching summit activations')
+    res.status(500).json({ error: 'Failed to fetch summit activations' })
+  }
+})
+
 // Look up summit by SOTA reference
 app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
   try {
