@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:proxied": "VITE_PROXIED=true vite",
-    "build:transport": "tsc server/transports/pino-database-transport.ts --outDir server/transports --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck",
+    "build:transport": "tsc --project server/transports/tsconfig.json",
     "preapi": "npm run build:transport",
     "api": "tsx server/api.ts",
     "api:stub": "tsx server/api.ts --stub-db",

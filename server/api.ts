@@ -14,7 +14,7 @@ import { authService, AuthError } from './services/authService'
 import { requireAuth } from './middleware/authMiddleware'
 import { logger } from './logger'
 import { loggingMiddleware } from './middleware/loggingMiddleware'
-import { stripPortableSuffix } from '../src/services/adifService'
+import { stripPortableSuffix } from '../shared/utils'
 import { PrismaClient } from "@prisma/client";
 
 // Type definitions
@@ -1452,7 +1452,7 @@ app.get('/data/api/admin/logs', requireAuth, async (req, res) => {
     })
 
     // Convert BigInt to string for JSON serialization
-    const logsWithStringIds = logs.map(log => ({
+    const logsWithStringIds = logs.map((log: typeof logs[number]) => ({
       ...log,
       id: log.id.toString()
     }))

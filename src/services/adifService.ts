@@ -1,5 +1,6 @@
 import {AdifParser} from 'adif-parser-ts'
 import {parseWotaReference} from '../utils/wotaReference'
+import {stripPortableSuffix} from '../../shared/utils'
 import type {
   ActivatorLogInput,
   AdifRecord,
@@ -167,10 +168,8 @@ export function extractSotaReference(record: AdifRecord): string | null {
   return null
 }
 
-// Helper function to strip /P or /M suffix from callsign
-export function stripPortableSuffix(callsign: string): string {
-  return callsign.replace(/\/[PM]$/i, '')
-}
+// Re-export from shared utils for backwards compatibility
+export { stripPortableSuffix } from '../../shared/utils'
 
 export function mapToActivatorLog(record: AdifRecord | undefined): ActivatorLogInput | null {
   if (record === undefined) {

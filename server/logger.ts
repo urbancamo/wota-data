@@ -43,7 +43,7 @@ const logger = isDevelopment
             },
           },
           {
-            target: path.join(__dirname, 'transports', 'pino-database-transport.js'),
+            target: path.join(__dirname, 'transports', 'dist', 'pino-database-transport.js'),
             level: logLevel,
           },
         ],
@@ -69,7 +69,7 @@ const logger = isDevelopment
             },
           },
           {
-            target: path.join(__dirname, 'transports', 'pino-database-transport.js'),
+            target: path.join(__dirname, 'transports', 'dist', 'pino-database-transport.js'),
             level: logLevel,
           },
         ],
