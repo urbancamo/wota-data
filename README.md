@@ -1,6 +1,25 @@
 # wota-data
 WOTA Facility for Importing/Exporting to ADIF Format and interacting with activation and chase data
 
+## Setup
+
+After cloning the repository, run the following commands:
+
+```bash
+# Install dependencies
+npm install
+
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your database credentials and other settings
+
+# Generate Prisma client
+npx prisma generate
+
+# Build the transport (required - dist/ is gitignored)
+npm run build:transport
+```
+
 ## Development
 
 ### Running the Application
