@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatWotaReference, parseWotaReference } from './wotaReference'
+import { formatWotaReference, parseWotaReference, gridRefToLatLng } from './wotaReference'
 
 describe('formatWotaReference', () => {
   it('formats LDW references correctly (wotaid <= 214)', () => {
@@ -58,5 +58,49 @@ describe('round-trip conversion', () => {
       const parsed = parseWotaReference(formatted)
       expect(parsed).toBe(i)
     }
+  })
+})
+
+describe('gridRefToLatLng', () => {
+  it('converts NY grid references correctly (Lake District area)', () => {
+    // Helvellyn summit: NY342151
+    const result = gridRefToLatLng('NY342151')
+    expect(result).not.toBeNull()
+    // Helvellyn is approximately at 54.527, -3.016
+    expect(result!.lat).toBeCloseTo(54.527, 1)
+    expect(result!.lng).toBeCloseTo(-3.016, 1)
+  })
+
+  it('handles spaces in grid references', () => {
+    const result = gridRefToLatLng('NY 342 151')
+    expect(result).not.toBeNull()
+    expect(result!.lat).toBeCloseTo(54.527, 1)
+  })
+
+  it('handles lowercase grid references', () => {
+    const result = gridRefToLatLng('ny342151')
+    expect(result).not.toBeNull()
+    expect(result!.lat).toBeCloseTo(54.527, 1)
+  })
+
+  it('returns null for invalid grid references', () => {
+    expect(gridRefToLatLng(null)).toBeNull()
+    expect(gridRefToLatLng(undefined)).toBeNull()
+    expect(gridRefToLatLng('')).toBeNull()
+    expect(gridRefToLatLng('invalid')).toBeNull()
+    expect(gridRefToLatLng('XX123456')).toBeNull() // Invalid grid square
+  })
+
+  it('returns null for odd number of digits', () => {
+    expect(gridRefToLatLng('NY12345')).toBeNull()
+  })
+
+  it('converts SD grid references correctly (southern Lake District)', () => {
+    // Coniston Old Man area: SD272978
+    const result = gridRefToLatLng('SD272978')
+    expect(result).not.toBeNull()
+    // Approximately at 54.36, -3.08
+    expect(result!.lat).toBeCloseTo(54.36, 1)
+    expect(result!.lng).toBeCloseTo(-3.08, 1)
   })
 })

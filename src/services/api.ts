@@ -29,6 +29,31 @@ export interface SessionResponse {
   }
 }
 
+export interface ChallengeLeaderboardEntry {
+  rank: number
+  callsign: string
+  points: number
+}
+
+export interface ChallengeLeaderboardResponse {
+  challenge: string
+  type: 'activator' | 'chaser'
+  leaderboard: ChallengeLeaderboardEntry[]
+}
+
+export interface LeagueTableEntry {
+  rank: number
+  callsign: string
+  points: number
+}
+
+export interface LeagueTablesResponse {
+  year: number
+  fellWalkers: LeagueTableEntry[]
+  fellChasers: LeagueTableEntry[]
+  fellWatchers: LeagueTableEntry[]
+}
+
 export const apiClient = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
@@ -331,6 +356,50 @@ export const apiClient = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch chaser contacts')
+    }
+
+    return response.json()
+  },
+
+  async getChallengeActivatorScores(): Promise<ChallengeLeaderboardResponse> {
+    const response = await fetch(`${API_BASE_URL}/challenge/2026-vhf/activators`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch challenge activator scores')
+    }
+
+    return response.json()
+  },
+
+  async getChallengeChaserScores(): Promise<ChallengeLeaderboardResponse> {
+    const response = await fetch(`${API_BASE_URL}/challenge/2026-vhf/chasers`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch challenge chaser scores')
+    }
+
+    return response.json()
+  },
+
+  async getLeagueTables(year?: number): Promise<LeagueTablesResponse> {
+    let url = `${API_BASE_URL}/league-tables`
+    if (year) {
+      url += `?year=${year}`
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch league tables')
     }
 
     return response.json()

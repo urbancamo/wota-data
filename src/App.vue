@@ -8,9 +8,11 @@ import AdifPreviewModal from './components/AdifPreviewModal.vue'
 import ExportFilterDialog from './components/ExportFilterDialog.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import UserStatisticsPanel from './components/UserStatisticsPanel.vue'
+import LeagueTablesPanel from './components/LeagueTablesPanel.vue'
 import ContactsView from './components/ContactsView.vue'
 import LogsView from './components/LogsView.vue'
 import SummitsView from './components/SummitsView.vue'
+import ChallengeView from './components/ChallengeView.vue'
 import { mapToActivatorLog, calculateStatistics } from './services/adifService'
 import { apiClient, type ExportFilters } from './services/api'
 import type { ParsedAdif, ImportStatistics } from './types/adif'
@@ -72,8 +74,8 @@ function handleAdminActionSelect(action: ActionSheetAction, index: number) {
 
   switch (index) {
     case 0:
-      // Navigate to Logs tab (tab index 4: Statistics=0, Activator=1, Chaser=2, Summits=3, Logs=4)
-      activeView.value = 4
+      // Navigate to Logs tab (tab index 5: Statistics=0, Activator=1, Chaser=2, Summits=3, Challenge=4, Logs=5)
+      activeView.value = 5
       break
   }
 }
@@ -277,6 +279,7 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
               <StatisticsPanel />
               <UserStatisticsPanel />
             </div>
+            <LeagueTablesPanel />
           </van-tab>
 
           <van-tab title="Activator Contacts">
@@ -289,6 +292,10 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
 
           <van-tab title="Summits">
             <SummitsView />
+          </van-tab>
+
+          <van-tab title="Challenge">
+            <ChallengeView />
           </van-tab>
 
           <van-tab v-if="isAdmin" title="Logs">

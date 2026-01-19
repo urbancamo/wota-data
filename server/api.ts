@@ -767,6 +767,21 @@ app.get('/data/api/summits', requireAuth, async (req, res) => {
   }
 })
 
+// Proxy for summits GeoJSON (avoids CORS issues)
+app.get('/data/api/summits/geojson', requireAuth, async (req, res) => {
+  try {
+    const response = await fetch('https://www.wota.org.uk/mapping/data/summits.json')
+    if (!response.ok) {
+      throw new Error(`Failed to fetch GeoJSON: ${response.status}`)
+    }
+    const geojson = await response.json()
+    res.json(geojson)
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching summits GeoJSON')
+    res.status(500).json({ error: 'Failed to fetch summits GeoJSON' })
+  }
+})
+
 // Get all activations for a specific summit (one row per unique activator and date)
 app.get('/data/api/summits/:wotaid/activations', requireAuth, async (req, res) => {
   try {
@@ -776,22 +791,30 @@ app.get('/data/api/summits/:wotaid/activations', requireAuth, async (req, res) =
       return res.status(400).json({ error: 'Invalid WOTA ID' })
     }
 
-    // Get distinct activations (one row per activator and date combination)
+    // Get activations grouped by date and activator, with contact count
     const activations = await prisma.$queryRaw<Array<{
       date: Date
-      callused: string
       activatedby: string
+      contacts: bigint
     }>>`
-      SELECT DISTINCT
+      SELECT
         DATE(date) as date,
-        callused,
-        activatedby
+        activatedby,
+        COUNT(*) as contacts
       FROM activator_log
       WHERE wotaid = ${wotaid}
+      GROUP BY DATE(date), activatedby
       ORDER BY date DESC
     `
 
-    res.json(activations)
+    // Convert BigInt to number for JSON serialization
+    const result = activations.map((a: { date: Date; activatedby: string; contacts: bigint }) => ({
+      date: a.date,
+      activatedby: a.activatedby,
+      contacts: Number(a.contacts)
+    }))
+
+    res.json(result)
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching summit activations')
     res.status(500).json({ error: 'Failed to fetch summit activations' })
@@ -1417,6 +1440,153 @@ app.get('/data/api/cms/test', async (req, res) => {
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method }, 'Error querying CMS database')
     res.status(500).json({ error: 'Failed to query CMS database' })
+  }
+})
+
+// League Tables - Top Fell Walkers, Chasers, and Watchers
+// Uses the pre-computed `table` table like the PHP reference implementation
+app.get('/data/api/league-tables', requireAuth, async (req, res) => {
+  try {
+    const yearParam = req.query.year as string | undefined
+    const year = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear()
+
+    // Top Fell Walkers: actpts from table
+    const fellWalkers = await prisma.$queryRaw<Array<{
+      callsign: string
+      points: number
+    }>>`
+      SELECT \`call\` as callsign, actpts as points
+      FROM \`table\`
+      WHERE year = ${year} AND actpts > 0
+      ORDER BY actpts DESC
+      LIMIT 20
+    `
+
+    // Top Fell Chasers: pbpts from table
+    const fellChasers = await prisma.$queryRaw<Array<{
+      callsign: string
+      points: number
+    }>>`
+      SELECT \`call\` as callsign, pbpts as points
+      FROM \`table\`
+      WHERE year = ${year} AND pbpts > 0
+      ORDER BY pbpts DESC
+      LIMIT 20
+    `
+
+    // Top Fell Watchers: frpts from table
+    const fellWatchers = await prisma.$queryRaw<Array<{
+      callsign: string
+      points: number
+    }>>`
+      SELECT \`call\` as callsign, frpts as points
+      FROM \`table\`
+      WHERE year = ${year} AND frpts > 0
+      ORDER BY frpts DESC
+      LIMIT 20
+    `
+
+    // Format leaderboard with rank
+    const formatLeaderboard = (data: Array<{ callsign: string; points: number }>) =>
+      data.map((entry, index) => ({
+        rank: index + 1,
+        callsign: entry.callsign,
+        points: Number(entry.points)
+      }))
+
+    res.json({
+      year,
+      fellWalkers: formatLeaderboard(fellWalkers),
+      fellChasers: formatLeaderboard(fellChasers),
+      fellWatchers: formatLeaderboard(fellWatchers)
+    })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching league tables')
+    res.status(500).json({ error: 'Failed to fetch league tables' })
+  }
+})
+
+// Challenge: 2026 2m/70cm SSB & CW Challenge - Activator Leaderboard
+// Scoring: 1 point per unique fell per band/mode combination in 2026
+app.get('/data/api/challenge/2026-vhf/activators', requireAuth, async (req, res) => {
+  try {
+    // Get activator scores: count unique fell/band/mode combinations per activator
+    // Qualifying: band in ('2m', '70cm') AND mode in ('CW', 'SSB')
+    const scores = await prisma.$queryRaw<Array<{
+      activatedby: string
+      points: bigint
+    }>>`
+      SELECT
+        activatedby,
+        COUNT(DISTINCT CONCAT(wotaid, '-', band, '-', mode)) as points
+      FROM activator_log
+      WHERE year = 2026
+        AND band IN ('2m', '70cm')
+        AND mode IN ('CW', 'SSB')
+      GROUP BY activatedby
+      ORDER BY points DESC
+    `
+
+    // Convert BigInt to number for JSON serialization
+    const leaderboard = scores.map((s, index) => ({
+      rank: index + 1,
+      callsign: s.activatedby,
+      points: Number(s.points)
+    }))
+
+    res.json({
+      challenge: '2026 WOTA 2m/70cm SSB & CW Challenge',
+      type: 'activator',
+      leaderboard
+    })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching challenge activator scores')
+    res.status(500).json({ error: 'Failed to fetch challenge activator scores' })
+  }
+})
+
+// Challenge: 2026 2m/70cm SSB & CW Challenge - Chaser Leaderboard
+// Scoring: 1 point per activator/fell/day/band/mode combination in 2026
+// Note: chaser_log doesn't have band/mode columns, so we match against activator_log
+// to find chasers who worked activators using qualifying band/mode combinations
+app.get('/data/api/challenge/2026-vhf/chasers', requireAuth, async (req, res) => {
+  try {
+    // Get chaser scores by joining with activator_log to find qualifying QSOs
+    // A chaser gets 1 point for each unique activator/fell/day/band/mode they worked
+    const scores = await prisma.$queryRaw<Array<{
+      chaser: string
+      points: bigint
+    }>>`
+      SELECT
+        c.wkdby as chaser,
+        COUNT(DISTINCT CONCAT(a.activatedby, '-', a.wotaid, '-', DATE(a.date), '-', a.band, '-', a.mode)) as points
+      FROM chaser_log c
+      INNER JOIN activator_log a ON
+        c.stncall = a.callused
+        AND c.wotaid = a.wotaid
+        AND DATE(c.date) = DATE(a.date)
+      WHERE a.year = 2026
+        AND a.band IN ('2m', '70cm')
+        AND a.mode IN ('CW', 'SSB')
+      GROUP BY c.wkdby
+      ORDER BY points DESC
+    `
+
+    // Convert BigInt to number for JSON serialization
+    const leaderboard = scores.map((s, index) => ({
+      rank: index + 1,
+      callsign: s.chaser,
+      points: Number(s.points)
+    }))
+
+    res.json({
+      challenge: '2026 WOTA 2m/70cm SSB & CW Challenge',
+      type: 'chaser',
+      leaderboard
+    })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching challenge chaser scores')
+    res.status(500).json({ error: 'Failed to fetch challenge chaser scores' })
   }
 })
 
