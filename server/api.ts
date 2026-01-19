@@ -821,7 +821,51 @@ app.get('/data/api/summits/:wotaid/activations', requireAuth, async (req, res) =
   }
 })
 
-// Look up summit by SOTA reference
+// Helper function to look up summit by SOTA reference
+async function lookupSotaSummit(sotaRef: string, _req: any, res: any) {
+  logger.info({ sotaRef }, 'Looking up SOTA reference')
+
+  // Parse SOTA reference (e.g., "G/LD-014" -> "014")
+  // SOTA references for Lake District start with G/LD-
+  const match = sotaRef.match(/^G\/LD-(\d+)$/)
+  if (!match) {
+    logger.info({ sotaRef }, 'Invalid SOTA reference format')
+    return res.status(400).json({ error: 'Invalid SOTA reference format. Expected format: G/LD-NNN' })
+  }
+
+  const sotaNumber = match[1] // e.g., "014"
+  const sotaId = parseInt(sotaNumber, 10) // Convert to integer: 14
+  logger.info({ sotaNumber, sotaId }, 'Parsed SOTA number')
+
+  const summit = await prisma.summit.findFirst({
+    where: {
+      sotaid: sotaId,
+    },
+  })
+
+  if (!summit) {
+    logger.info({ sotaRef, sotaId }, 'Summit not found for SOTA reference')
+    return res.status(404).json({ error: 'Summit not found for SOTA reference' })
+  }
+
+  logger.info({ summitName: summit.name, wotaid: summit.wotaid }, 'Found summit')
+  res.json(summit)
+}
+
+// Look up summit by SOTA reference (URL-encoded version, e.g., G%2FLD-012)
+// This handles when the client URL-encodes the slash
+app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
+  try {
+    // Decode the reference parameter (converts %2F back to /)
+    const sotaRef = decodeURIComponent(req.params.reference).toUpperCase()
+    await lookupSotaSummit(sotaRef, req, res)
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error looking up SOTA reference')
+    res.status(500).json({ error: 'Failed to look up SOTA reference' })
+  }
+})
+
+// Look up summit by SOTA reference (path-based version, e.g., /G/LD-012)
 // SOTA references have format: ASSOCIATION/REGION-NUMBER (e.g., G/LD-056)
 // Use two path parameters to capture both parts of the reference
 app.get('/data/api/summits/sota/:association/:region', requireAuth, async (req, res) => {
@@ -830,33 +874,7 @@ app.get('/data/api/summits/sota/:association/:region', requireAuth, async (req, 
     const association = req.params.association.toUpperCase()
     const region = req.params.region.toUpperCase()
     const sotaRef = `${association}/${region}`
-    logger.info({ sotaRef }, 'Looking up SOTA reference')
-
-    // Parse SOTA reference (e.g., "G/LD-014" -> "014")
-    // SOTA references for Lake District start with G/LD-
-    const match = sotaRef.match(/^G\/LD-(\d+)$/)
-    if (!match) {
-      logger.info({ sotaRef }, 'Invalid SOTA reference format')
-      return res.status(400).json({ error: 'Invalid SOTA reference format. Expected format: G/LD-NNN' })
-    }
-
-    const sotaNumber = match[1] // e.g., "014"
-    const sotaId = parseInt(sotaNumber, 10) // Convert to integer: 14
-    logger.info({ sotaNumber, sotaId }, 'Parsed SOTA number')
-
-    const summit = await prisma.summit.findFirst({
-      where: {
-        sotaid: sotaId,
-      },
-    })
-
-    if (!summit) {
-      logger.info({ sotaRef, sotaId }, 'Summit not found for SOTA reference')
-      return res.status(404).json({ error: 'Summit not found for SOTA reference' })
-    }
-
-    logger.info({ summitName: summit.name, wotaid: summit.wotaid }, 'Found summit')
-    res.json(summit)
+    await lookupSotaSummit(sotaRef, req, res)
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error looking up SOTA reference')
     res.status(500).json({ error: 'Failed to look up SOTA reference' })
