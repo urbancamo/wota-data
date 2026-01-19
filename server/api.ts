@@ -1528,7 +1528,7 @@ app.get('/data/api/challenge/2026-vhf/activators', requireAuth, async (req, res)
     `
 
     // Convert BigInt to number for JSON serialization
-    const leaderboard = scores.map((s, index) => ({
+    const leaderboard = scores.map((s: { activatedby: string; points: bigint }, index: number) => ({
       rank: index + 1,
       callsign: s.activatedby,
       points: Number(s.points)
@@ -1573,7 +1573,7 @@ app.get('/data/api/challenge/2026-vhf/chasers', requireAuth, async (req, res) =>
     `
 
     // Convert BigInt to number for JSON serialization
-    const leaderboard = scores.map((s, index) => ({
+    const leaderboard = scores.map((s: { chaser: string; points: bigint }, index: number) => ({
       rank: index + 1,
       callsign: s.chaser,
       points: Number(s.points)
