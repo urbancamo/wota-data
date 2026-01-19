@@ -3,10 +3,13 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { showNotify } from 'vant'
 import { apiClient } from '../services/api'
 import { formatWotaReference } from '../utils/wotaReference'
+import { useAuth } from '../composables/useAuth'
 
 const props = defineProps<{
   contactType: 'activator' | 'chaser'
 }>()
+
+const { isAdmin } = useAuth()
 
 const contacts = ref<any[]>([])
 const loading = ref(false)
@@ -20,6 +23,10 @@ const sortOrder = ref<'asc' | 'desc'>('desc')
 const containerRef = ref<HTMLElement | null>(null)
 const filterSectionRef = ref<HTMLElement | null>(null)
 const paginationRef = ref<HTMLElement | null>(null)
+
+// Admin callsign search
+const adminCallsignInput = ref('')
+const activeCallsign = ref('')
 
 // Compute dropdown options for year filter
 const yearOptions = computed(() => {
@@ -81,9 +88,10 @@ function handleResize() {
 async function loadContacts() {
   try {
     loading.value = true
+    const callsignFilter = activeCallsign.value || undefined
     const result = props.contactType === 'activator'
-      ? await apiClient.getActivatorContacts(currentPage.value, pageSize.value, selectedYear.value || undefined, sortOrder.value)
-      : await apiClient.getChaserContacts(currentPage.value, pageSize.value, selectedYear.value || undefined, sortOrder.value)
+      ? await apiClient.getActivatorContacts(currentPage.value, pageSize.value, selectedYear.value || undefined, sortOrder.value, callsignFilter)
+      : await apiClient.getChaserContacts(currentPage.value, pageSize.value, selectedYear.value || undefined, sortOrder.value, callsignFilter)
 
     contacts.value = result.contacts
     totalPages.value = result.pagination.totalPages
@@ -98,6 +106,21 @@ async function loadContacts() {
   } finally {
     loading.value = false
   }
+}
+
+function searchByCallsign() {
+  activeCallsign.value = adminCallsignInput.value.trim().toUpperCase()
+  currentPage.value = 1
+  selectedYear.value = 0
+  loadContacts()
+}
+
+function clearCallsignSearch() {
+  adminCallsignInput.value = ''
+  activeCallsign.value = ''
+  currentPage.value = 1
+  selectedYear.value = 0
+  loadContacts()
 }
 
 // Watch for page changes
@@ -128,6 +151,8 @@ watch(() => props.contactType, () => {
   currentPage.value = 1
   selectedYear.value = 0
   sortOrder.value = 'desc'
+  adminCallsignInput.value = ''
+  activeCallsign.value = ''
   loadContacts()
 })
 
@@ -179,13 +204,39 @@ defineExpose({
 <template>
   <div class="contacts-view">
     <div class="contacts-container" ref="containerRef">
+      <!-- Admin callsign search -->
+      <div v-if="isAdmin" class="admin-search-section">
+        <div class="admin-search-label">Admin: Search by Callsign</div>
+        <div class="admin-search-controls">
+          <van-field
+            v-model="adminCallsignInput"
+            placeholder="Enter callsign (e.g., G0ABC)"
+            clearable
+            @keyup.enter="searchByCallsign"
+          />
+          <van-button type="primary" size="small" @click="searchByCallsign">
+            Search
+          </van-button>
+          <van-button
+            v-if="activeCallsign"
+            size="small"
+            @click="clearCallsignSearch"
+          >
+            Clear
+          </van-button>
+        </div>
+        <div v-if="activeCallsign" class="active-callsign-indicator">
+          Showing contacts for: <strong>{{ activeCallsign }}</strong>
+        </div>
+      </div>
+
       <div v-if="loading" class="loading-container">
         <van-loading type="spinner" size="24" />
         <div class="loading-text">Loading contacts...</div>
       </div>
 
       <div v-else-if="contacts.length === 0" class="empty-state">
-        <van-empty description="No contacts found" />
+        <van-empty :description="activeCallsign ? `No contacts found for ${activeCallsign}` : 'No contacts found'" />
       </div>
 
       <div v-else>
@@ -286,6 +337,43 @@ defineExpose({
 
 .contacts-container {
   padding: 16px;
+}
+
+.admin-search-section {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #ff9800;
+}
+
+.admin-search-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e65100;
+  margin-bottom: 8px;
+}
+
+.admin-search-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-search-controls .van-field {
+  flex: 1;
+  max-width: 300px;
+}
+
+.active-callsign-indicator {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #424242;
+}
+
+.active-callsign-indicator strong {
+  color: #e65100;
 }
 
 .filter-section {
@@ -415,6 +503,23 @@ defineExpose({
 @media (max-width: 768px) {
   .contacts-container {
     padding: 8px;
+  }
+
+  .admin-search-section {
+    padding: 10px 12px;
+  }
+
+  .admin-search-label {
+    font-size: 13px;
+  }
+
+  .admin-search-controls {
+    flex-wrap: wrap;
+  }
+
+  .admin-search-controls .van-field {
+    max-width: none;
+    width: 100%;
   }
 
   .filter-section {

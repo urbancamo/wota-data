@@ -325,10 +325,13 @@ export const apiClient = {
     window.URL.revokeObjectURL(downloadUrl)
   },
 
-  async getActivatorContacts(page: number = 1, pageSize: number = 25, year?: number, sortOrder: 'asc' | 'desc' = 'desc'): Promise<any> {
+  async getActivatorContacts(page: number = 1, pageSize: number = 25, year?: number, sortOrder: 'asc' | 'desc' = 'desc', callsign?: string): Promise<any> {
     let url = `${API_BASE_URL}/contacts/activator?page=${page}&pageSize=${pageSize}&sortOrder=${sortOrder}`
     if (year) {
       url += `&year=${year}`
+    }
+    if (callsign) {
+      url += `&callsign=${encodeURIComponent(callsign)}`
     }
 
     const response = await fetch(url, {
@@ -343,10 +346,13 @@ export const apiClient = {
     return response.json()
   },
 
-  async getChaserContacts(page: number = 1, pageSize: number = 25, year?: number, sortOrder: 'asc' | 'desc' = 'desc'): Promise<any> {
+  async getChaserContacts(page: number = 1, pageSize: number = 25, year?: number, sortOrder: 'asc' | 'desc' = 'desc', callsign?: string): Promise<any> {
     let url = `${API_BASE_URL}/contacts/chaser?page=${page}&pageSize=${pageSize}&sortOrder=${sortOrder}`
     if (year) {
       url += `&year=${year}`
+    }
+    if (callsign) {
+      url += `&callsign=${encodeURIComponent(callsign)}`
     }
 
     const response = await fetch(url, {

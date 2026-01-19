@@ -822,9 +822,14 @@ app.get('/data/api/summits/:wotaid/activations', requireAuth, async (req, res) =
 })
 
 // Look up summit by SOTA reference
-app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
+// SOTA references have format: ASSOCIATION/REGION-NUMBER (e.g., G/LD-056)
+// Use two path parameters to capture both parts of the reference
+app.get('/data/api/summits/sota/:association/:region', requireAuth, async (req, res) => {
   try {
-    const sotaRef = req.params.reference.toUpperCase()
+    // Reconstruct the full SOTA reference from path parameters
+    const association = req.params.association.toUpperCase()
+    const region = req.params.region.toUpperCase()
+    const sotaRef = `${association}/${region}`
     logger.info({ sotaRef }, 'Looking up SOTA reference')
 
     // Parse SOTA reference (e.g., "G/LD-014" -> "014")
@@ -832,7 +837,7 @@ app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
     const match = sotaRef.match(/^G\/LD-(\d+)$/)
     if (!match) {
       logger.info({ sotaRef }, 'Invalid SOTA reference format')
-      return res.status(400).json({ error: 'Invalid SOTA reference format' })
+      return res.status(400).json({ error: 'Invalid SOTA reference format. Expected format: G/LD-NNN' })
     }
 
     const sotaNumber = match[1] // e.g., "014"
@@ -991,7 +996,7 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
   }
 })
 
-// Get paginated activator contacts for logged-in user
+// Get paginated activator contacts for logged-in user (or specified callsign for admins)
 app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
   try {
     const userCallsign = req.session.username
@@ -1007,15 +1012,21 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
     const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc'
     const skip = (page - 1) * pageSize
 
+    // Admin users can query any callsign
+    const callsignParam = req.query.callsign as string | undefined
+    const targetCallsign = (req.session.isAdmin && callsignParam)
+      ? callsignParam.toUpperCase()
+      : userCallsign
+
     // Build where clause
-    const whereClause: any = { activatedby: userCallsign }
+    const whereClause: any = { activatedby: targetCallsign }
     if (yearFilter) {
       whereClause.year = yearFilter
     }
 
     // Get available years for this user
     const allRecords = await prisma.activatorLog.findMany({
-      where: { activatedby: userCallsign },
+      where: { activatedby: targetCallsign },
       select: { year: true },
       orderBy: { year: 'desc' },
     })
@@ -1067,7 +1078,7 @@ app.get('/data/api/contacts/activator', requireAuth, async (req, res) => {
   }
 })
 
-// Get chaser contacts for authenticated user
+// Get chaser contacts for authenticated user (or specified callsign for admins)
 app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
   try {
     const userCallsign = req.session.username
@@ -1083,15 +1094,21 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
     const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc'
     const skip = (page - 1) * pageSize
 
+    // Admin users can query any callsign
+    const callsignParam = req.query.callsign as string | undefined
+    const targetCallsign = (req.session.isAdmin && callsignParam)
+      ? callsignParam.toUpperCase()
+      : userCallsign
+
     // Build where clause
-    const whereClause: any = { wkdby: userCallsign }
+    const whereClause: any = { wkdby: targetCallsign }
     if (yearFilter) {
       whereClause.year = yearFilter
     }
 
     // Get available years for this user
     const allRecords = await prisma.chaserLog.findMany({
-      where: { wkdby: userCallsign },
+      where: { wkdby: targetCallsign },
       select: { year: true },
       orderBy: { year: 'desc' },
     })
