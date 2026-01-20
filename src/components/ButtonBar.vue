@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { showNotify, showDialog } from 'vant'
+import { showNotify, showDialog, showLoadingToast, closeToast } from 'vant'
 import { parseAdifFile, calculateStatistics as calculateAdifStatistics, parseChaserAdifFile, validateChaserWotaRefs, checkChaserDuplicates } from '../services/adifService'
 import { parseCsvFile, calculateStatistics as calculateCsvStatistics, parseChaserCsvFile } from '../services/csvService'
 import type { ParsedAdif, ChaserImportRecord, ChaserImportResult } from '../types/adif'
@@ -68,6 +68,12 @@ async function handleAdifFileSelect(event: Event) {
   console.log('Starting to process file:', file.name)
   isProcessing.value = true
 
+  showLoadingToast({
+    message: 'Parsing activator ADIF...',
+    forbidClick: true,
+    duration: 0,
+  })
+
   try {
     const parsed = await parseAdifFile(file)
     const stats = calculateAdifStatistics(parsed.records, parsed.errors)
@@ -100,6 +106,7 @@ async function handleAdifFileSelect(event: Event) {
       message: error instanceof Error ? error.message : 'Failed to parse ADIF file',
     })
   } finally {
+    closeToast()
     isProcessing.value = false
     // Reset file input
     if (target) target.value = ''
@@ -130,6 +137,12 @@ async function handleCsvFileSelect(event: Event) {
 
   console.log('Starting to process file:', file.name)
   isProcessing.value = true
+
+  showLoadingToast({
+    message: 'Parsing activator CSV...',
+    forbidClick: true,
+    duration: 0,
+  })
 
   try {
     const parsed = await parseCsvFile(file)
@@ -163,6 +176,7 @@ async function handleCsvFileSelect(event: Event) {
       message: error instanceof Error ? error.message : 'Failed to parse CSV file',
     })
   } finally {
+    closeToast()
     isProcessing.value = false
     // Reset file input
     if (target) target.value = ''
@@ -190,13 +204,13 @@ async function handleChaserAdifFileSelect(event: Event) {
 
   isProcessing.value = true
 
-  try {
-    showNotify({
-      type: 'primary',
-      message: 'Parsing ADIF file...',
-      duration: 1000,
-    })
+  showLoadingToast({
+    message: 'Parsing chaser ADIF...',
+    forbidClick: true,
+    duration: 0,
+  })
 
+  try {
     // Parse file
     let result: ChaserImportResult = await parseChaserAdifFile(file)
 
@@ -208,10 +222,10 @@ async function handleChaserAdifFileSelect(event: Event) {
       return
     }
 
-    showNotify({
-      type: 'primary',
+    showLoadingToast({
       message: 'Validating WOTA references...',
-      duration: 1000,
+      forbidClick: true,
+      duration: 0,
     })
 
     // Validate WOTA references
@@ -223,10 +237,10 @@ async function handleChaserAdifFileSelect(event: Event) {
       // Continue with unvalidated records
     }
 
-    showNotify({
-      type: 'primary',
+    showLoadingToast({
       message: 'Checking for duplicates...',
-      duration: 1000,
+      forbidClick: true,
+      duration: 0,
     })
 
     // Check for duplicates
@@ -263,6 +277,7 @@ async function handleChaserAdifFileSelect(event: Event) {
       message: error instanceof Error ? error.message : 'Failed to parse chaser ADIF file',
     })
   } finally {
+    closeToast()
     isProcessing.value = false
     // Reset file input
     if (target) target.value = ''
@@ -281,13 +296,13 @@ async function handleChaserCsvFileSelect(event: Event) {
 
   isProcessing.value = true
 
-  try {
-    showNotify({
-      type: 'primary',
-      message: 'Parsing CSV file...',
-      duration: 1000,
-    })
+  showLoadingToast({
+    message: 'Parsing chaser CSV...',
+    forbidClick: true,
+    duration: 0,
+  })
 
+  try {
     // Parse CSV file
     let result: ChaserImportResult = await parseChaserCsvFile(file)
 
@@ -299,10 +314,10 @@ async function handleChaserCsvFileSelect(event: Event) {
       return
     }
 
-    showNotify({
-      type: 'primary',
+    showLoadingToast({
       message: 'Validating WOTA references...',
-      duration: 1000,
+      forbidClick: true,
+      duration: 0,
     })
 
     // Validate WOTA references
@@ -314,10 +329,10 @@ async function handleChaserCsvFileSelect(event: Event) {
       // Continue with unvalidated records
     }
 
-    showNotify({
-      type: 'primary',
+    showLoadingToast({
       message: 'Checking for duplicates...',
-      duration: 1000,
+      forbidClick: true,
+      duration: 0,
     })
 
     // Check for duplicates
@@ -358,6 +373,7 @@ async function handleChaserCsvFileSelect(event: Event) {
       message: error instanceof Error ? error.message : 'Failed to parse chaser CSV file',
     })
   } finally {
+    closeToast()
     isProcessing.value = false
     // Reset file input
     if (target) target.value = ''
@@ -367,15 +383,16 @@ async function handleChaserCsvFileSelect(event: Event) {
 async function handleChaserImportConfirm(validRecords: ChaserImportRecord[]) {
   try {
     isProcessing.value = true
-    showNotify({
-      type: 'primary',
-      message: 'Importing records...',
-      duration: 2000,
+    showLoadingToast({
+      message: 'Importing chaser records...',
+      forbidClick: true,
+      duration: 0,
     })
 
     const response = await fetch('/data/api/import/chaser-adif', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ records: validRecords })
     })
 
@@ -414,6 +431,7 @@ async function handleChaserImportConfirm(validRecords: ChaserImportRecord[]) {
       message: error instanceof Error ? error.message : 'Import failed',
     })
   } finally {
+    closeToast()
     isProcessing.value = false
   }
 }

@@ -866,7 +866,7 @@ app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
 })
 
 // Look up summit by SOTA reference (path-based version, e.g., /G/LD-012)
-// SOTA references have format: ASSOCIATION/REGION-NUMBER (e.g., G/LD-056)
+// SOTA references to have format: ASSOCIATION/REGION-NUMBER (e.g., G/LD-056)
 // Use two path parameters to capture both parts of the reference
 app.get('/data/api/summits/sota/:association/:region', requireAuth, async (req, res) => {
   try {
@@ -1479,50 +1479,57 @@ app.get('/data/api/cms/test', async (req, res) => {
 })
 
 // League Tables - Top Fell Walkers, Chasers, and Watchers
-// Uses the pre-computed `table` table like the PHP reference implementation
+// Calculated directly from activator_log and chaser_log tables
 app.get('/data/api/league-tables', requireAuth, async (req, res) => {
   try {
     const yearParam = req.query.year as string | undefined
     const year = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear()
 
-    // Top Fell Walkers: actpts from table
+    // Top Fell Walkers: Count unique summits activated per activator per year
+    // Each unique summit activation = 1 point
     const fellWalkers = await prisma.$queryRaw<Array<{
       callsign: string
-      points: number
+      points: bigint
     }>>`
-      SELECT \`call\` as callsign, actpts as points
-      FROM \`table\`
-      WHERE year = ${year} AND actpts > 0
-      ORDER BY actpts DESC
+      SELECT activatedby as callsign, COUNT(DISTINCT wotaid) as points
+      FROM activator_log
+      WHERE year = ${year}
+      GROUP BY activatedby
+      HAVING COUNT(DISTINCT wotaid) > 0
+      ORDER BY points DESC
       LIMIT 20
     `
 
-    // Top Fell Chasers: pbpts from table
+    // Top Fell Chasers: Sum points_yr from chaser_log per chaser per year
     const fellChasers = await prisma.$queryRaw<Array<{
       callsign: string
-      points: number
+      points: bigint
     }>>`
-      SELECT \`call\` as callsign, pbpts as points
-      FROM \`table\`
-      WHERE year = ${year} AND pbpts > 0
-      ORDER BY pbpts DESC
+      SELECT wkdby as callsign, SUM(points_yr) as points
+      FROM chaser_log
+      WHERE year = ${year}
+      GROUP BY wkdby
+      HAVING SUM(points_yr) > 0
+      ORDER BY points DESC
       LIMIT 20
     `
 
-    // Top Fell Watchers: frpts from table
+    // Top Fell Watchers: Total contacts made per chaser per year
     const fellWatchers = await prisma.$queryRaw<Array<{
       callsign: string
-      points: number
+      points: bigint
     }>>`
-      SELECT \`call\` as callsign, frpts as points
-      FROM \`table\`
-      WHERE year = ${year} AND frpts > 0
-      ORDER BY frpts DESC
+      SELECT wkdby as callsign, COUNT(*) as points
+      FROM chaser_log
+      WHERE year = ${year}
+      GROUP BY wkdby
+      HAVING COUNT(*) > 0
+      ORDER BY points DESC
       LIMIT 20
     `
 
     // Format leaderboard with rank
-    const formatLeaderboard = (data: Array<{ callsign: string; points: number }>) =>
+    const formatLeaderboard = (data: Array<{ callsign: string; points: bigint }>) =>
       data.map((entry, index) => ({
         rank: index + 1,
         callsign: entry.callsign,
