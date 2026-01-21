@@ -54,6 +54,15 @@ export interface LeagueTablesResponse {
   fellWatchers: LeagueTableEntry[]
 }
 
+export interface ActivationContact {
+  time: string | null
+  stncall: string
+  confirmed: boolean | null
+  band: string | null
+  frequency: number | null
+  mode: string | null
+}
+
 export const apiClient = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
@@ -406,6 +415,25 @@ export const apiClient = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch league tables')
+    }
+
+    return response.json()
+  },
+
+  async getActivationContacts(wotaid: number, callsign: string, date: string): Promise<ActivationContact[]> {
+    const params = new URLSearchParams({
+      wotaid: wotaid.toString(),
+      callsign,
+      date,
+    })
+
+    const response = await fetch(`${API_BASE_URL}/activation/contacts?${params.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch activation contacts')
     }
 
     return response.json()

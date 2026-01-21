@@ -951,10 +951,10 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
     // Get total summits
     const totalSummits = await prisma.summit.count()
 
-    // Get 5 most recently activated summits
+    // Get 30 most recently activated summits
     const recentActivations = await prisma.activatorLog.findMany({
       orderBy: { date: 'desc' },
-      take: 5,
+      take: 30,
       select: {
         wotaid: true,
         date: true,
@@ -1011,6 +1011,41 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching statistics')
     res.status(500).json({ error: 'Failed to fetch statistics' })
+  }
+})
+
+// Get contacts for a specific activation (by wotaid, callsign, and date)
+app.get('/data/api/activation/contacts', requireAuth, async (req, res) => {
+  try {
+    const wotaid = parseInt(req.query.wotaid as string)
+    const callsign = req.query.callsign as string
+    const date = req.query.date as string
+
+    if (!wotaid || !callsign || !date) {
+      return res.status(400).json({ error: 'Missing required parameters: wotaid, callsign, date' })
+    }
+
+    const contacts = await prisma.activatorLog.findMany({
+      where: {
+        wotaid,
+        callused: callsign,
+        date: new Date(date),
+      },
+      select: {
+        time: true,
+        stncall: true,
+        confirmed: true,
+        band: true,
+        frequency: true,
+        mode: true,
+      },
+      orderBy: { time: 'asc' },
+    })
+
+    res.json(contacts)
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching activation contacts')
+    res.status(500).json({ error: 'Failed to fetch activation contacts' })
   }
 })
 
