@@ -1514,16 +1514,16 @@ app.get('/data/api/league-tables', requireAuth, async (req, res) => {
       LIMIT 20
     `
 
-    // Top Fell Watchers: Total contacts made per chaser per year
+    // Top Fell Watchers: Count unique activator-summit combinations per chaser per year
     const fellWatchers = await prisma.$queryRaw<Array<{
       callsign: string
       points: bigint
     }>>`
-      SELECT wkdby as callsign, COUNT(*) as points
+      SELECT wkdby as callsign, COUNT(DISTINCT CONCAT(wotaid, '-', stncall)) as points
       FROM chaser_log
       WHERE year = ${year}
       GROUP BY wkdby
-      HAVING COUNT(*) > 0
+      HAVING COUNT(DISTINCT CONCAT(wotaid, '-', stncall)) > 0
       ORDER BY points DESC
       LIMIT 20
     `
