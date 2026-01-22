@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue'
 import { showNotify } from 'vant'
-import { apiClient } from '../services/api'
+import { apiClient, type ActivationContact } from '../services/api'
 import { formatWotaReference, formatSotaReference, formatHumpReference, formatBookName, gridRefToLatLng } from '../utils/wotaReference'
 import type { Summit } from '../types/adif'
 
@@ -42,6 +42,17 @@ const summitActivations = ref<Activation[]>([])
 const loadingActivations = ref(false)
 const activationSortColumn = ref<keyof Activation>('date')
 const activationSortDirection = ref<'asc' | 'desc'>('desc')
+
+// Activation detail popup state
+const showActivationDetailPopup = ref(false)
+const selectedActivationDetail = ref<{
+  wotaid: number
+  name: string
+  date: string
+  callsign: string
+} | null>(null)
+const activationDetailContacts = ref<ActivationContact[]>([])
+const loadingActivationContacts = ref(false)
 
 // Map state
 const mapContainer = ref<HTMLElement | null>(null)
@@ -200,6 +211,75 @@ function applySortingToActivations() {
 function getActivationSortIcon(column: keyof Activation): string {
   if (activationSortColumn.value !== column) return '↕'
   return activationSortDirection.value === 'asc' ? '↑' : '↓'
+}
+
+async function handleActivationRowClick(activation: Activation) {
+  if (!selectedSummit.value) return
+
+  selectedActivationDetail.value = {
+    wotaid: selectedSummit.value.wotaid,
+    name: selectedSummit.value.name,
+    date: activation.date,
+    callsign: activation.activatedby
+  }
+  showActivationDetailPopup.value = true
+  loadingActivationContacts.value = true
+  activationDetailContacts.value = []
+
+  try {
+    const contacts = await apiClient.getActivationContacts(
+      selectedSummit.value.wotaid,
+      activation.activatedby,
+      activation.date
+    )
+    activationDetailContacts.value = contacts
+  } catch (error) {
+    console.error('Error fetching activation contacts:', error)
+    showNotify({
+      type: 'warning',
+      message: error instanceof Error ? error.message : 'Failed to load contacts'
+    })
+  } finally {
+    loadingActivationContacts.value = false
+  }
+}
+
+function formatTime(timeString: string | null): string {
+  if (!timeString) return '-'
+  const date = new Date(timeString)
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+async function copyActivationAsMarkdown() {
+  if (!selectedActivationDetail.value || activationDetailContacts.value.length === 0) return
+
+  const activation = selectedActivationDetail.value
+  let markdown = `## ${activation.name} (${formatWotaReference(activation.wotaid)})\n`
+  markdown += `**Callsign:** ${activation.callsign}  \n`
+  markdown += `**Date:** ${formatDate(activation.date)}\n\n`
+  markdown += `| Time | Callsign | Band | Mode | Confirmed |\n`
+  markdown += `|------|----------|------|------|:---------:|\n`
+
+  for (const contact of activationDetailContacts.value) {
+    const time = formatTime(contact.time)
+    const band = contact.band || '-'
+    const mode = contact.mode || '-'
+    const confirmed = contact.confirmed ? '✓' : '-'
+    markdown += `| ${time} | [${contact.stncall}](https://qrz.com/db/${contact.stncall}) | ${band} | ${mode} | ${confirmed} |\n`
+  }
+
+  try {
+    await navigator.clipboard.writeText(markdown)
+    showNotify({
+      type: 'success',
+      message: 'Copied to clipboard'
+    })
+  } catch (error) {
+    showNotify({
+      type: 'warning',
+      message: 'Failed to copy to clipboard'
+    })
+  }
 }
 
 function handleClosePopup() {
@@ -550,7 +630,12 @@ defineExpose({
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="activation in summitActivations" :key="`${activation.date}-${activation.activatedby}`">
+                <tr
+                  v-for="activation in summitActivations"
+                  :key="`${activation.date}-${activation.activatedby}`"
+                  class="clickable-row"
+                  @click="handleActivationRowClick(activation)"
+                >
                   <td class="date">{{ formatDate(activation.date) }}</td>
                   <td class="callsign">{{ activation.activatedby }}</td>
                   <td class="contacts">{{ activation.contacts }}</td>
@@ -565,6 +650,90 @@ defineExpose({
             description="No activations recorded"
             :image-size="60"
           />
+        </div>
+      </div>
+    </van-popup>
+
+    <!-- Activation Detail Popup -->
+    <van-popup
+      v-model:show="showActivationDetailPopup"
+      position="bottom"
+      :style="{ height: '70%' }"
+      round
+    >
+      <div class="activation-detail-popup">
+        <div class="popup-header">
+          <h3>Activation Details</h3>
+          <van-icon name="cross" class="close-icon" @click="showActivationDetailPopup = false" />
+        </div>
+
+        <div v-if="selectedActivationDetail" class="activation-info">
+          <div class="info-row">
+            <span class="info-label">Summit:</span>
+            <span class="info-value">{{ selectedActivationDetail.name }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Reference:</span>
+            <span class="info-value wota-ref">{{ formatWotaReference(selectedActivationDetail.wotaid) }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Callsign:</span>
+            <span class="info-value callsign">{{ selectedActivationDetail.callsign }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Date:</span>
+            <span class="info-value">{{ formatDate(selectedActivationDetail.date) }}</span>
+          </div>
+        </div>
+
+        <div class="contacts-section">
+          <div class="contacts-header">
+            <div class="contacts-title">Contacts ({{ activationDetailContacts.length }})</div>
+            <van-button
+              v-if="activationDetailContacts.length > 0"
+              size="small"
+              icon="description"
+              @click="copyActivationAsMarkdown"
+            >
+              Copy as Markdown
+            </van-button>
+          </div>
+
+          <div v-if="loadingActivationContacts" class="loading-container">
+            <van-loading type="spinner" size="24" />
+          </div>
+
+          <div v-else-if="activationDetailContacts.length > 0" class="contacts-table-wrapper">
+            <table class="contacts-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Callsign</th>
+                  <th>Band</th>
+                  <th>Mode</th>
+                  <th>Confirmed</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(contact, index) in activationDetailContacts" :key="index">
+                  <td>{{ formatTime(contact.time) }}</td>
+                  <td class="callsign">
+                    <a :href="`https://qrz.com/db/${contact.stncall}`" target="_blank" rel="noopener">
+                      {{ contact.stncall }}
+                    </a>
+                  </td>
+                  <td>{{ contact.band || '-' }}</td>
+                  <td>{{ contact.mode || '-' }}</td>
+                  <td>
+                    <van-icon v-if="contact.confirmed" name="success" color="#07c160" />
+                    <span v-else>-</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-else class="no-contacts">No contacts found</div>
         </div>
       </div>
     </van-popup>
@@ -833,6 +1002,153 @@ defineExpose({
 
 .activations-table tbody tr:hover {
   background: #f7f8fa;
+}
+
+.activations-table tbody tr.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.activations-table tbody tr.clickable-row:hover {
+  background: #f0f7ff;
+}
+
+/* Activation Detail Popup Styles */
+.activation-detail-popup {
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.activation-detail-popup .popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.activation-detail-popup .popup-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #323233;
+}
+
+.activation-detail-popup .close-icon {
+  font-size: 20px;
+  color: #969799;
+  cursor: pointer;
+}
+
+.activation-detail-popup .activation-info {
+  background: #f7f8fa;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.activation-detail-popup .info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.activation-detail-popup .info-label {
+  color: #969799;
+  font-size: 14px;
+}
+
+.activation-detail-popup .info-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #323233;
+}
+
+.activation-detail-popup .info-value.wota-ref {
+  color: #1989fa;
+  font-family: monospace;
+}
+
+.activation-detail-popup .info-value.callsign {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.activation-detail-popup .contacts-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.activation-detail-popup .contacts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.activation-detail-popup .contacts-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #323233;
+}
+
+.activation-detail-popup .loading-container {
+  text-align: center;
+  padding: 20px;
+}
+
+.activation-detail-popup .contacts-table-wrapper {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.activation-detail-popup .contacts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.activation-detail-popup .contacts-table th,
+.activation-detail-popup .contacts-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.activation-detail-popup .contacts-table th {
+  background: #f7f8fa;
+  font-weight: 600;
+  color: #323233;
+  position: sticky;
+  top: 0;
+}
+
+.activation-detail-popup .contacts-table td.callsign {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.activation-detail-popup .contacts-table td.callsign a {
+  color: #1989fa;
+  text-decoration: none;
+}
+
+.activation-detail-popup .contacts-table td.callsign a:hover {
+  text-decoration: underline;
+}
+
+.activation-detail-popup .contacts-table tbody tr:hover {
+  background: #f7f8fa;
+}
+
+.activation-detail-popup .no-contacts {
+  text-align: center;
+  color: #999;
+  padding: 20px;
 }
 
 /* Map Section Styles */

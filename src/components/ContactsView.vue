@@ -280,7 +280,11 @@ defineExpose({
               <tr v-for="contact in contacts" :key="contact.id">
                 <td>{{ formatDate(contact.date) }}</td>
                 <td>{{ formatTime(contact.time) }}</td>
-                <td class="callsign">{{ contact.stncall }}</td>
+                <td class="callsign">
+                  <a :href="`https://qrz.com/db/${contact.stncall}`" target="_blank" rel="noopener">
+                    {{ contact.stncall }}
+                  </a>
+                </td>
                 <td class="wota-ref">{{ formatWotaReference(contact.wotaid) }}</td>
                 <td class="summit-name">{{ contact.summitName || 'Unknown' }}</td>
                 <template v-if="contactType === 'activator'">
@@ -439,7 +443,15 @@ defineExpose({
 .callsign {
   font-family: monospace;
   font-weight: 600;
-  color: #323233;
+}
+
+.callsign a {
+  color: #1989fa;
+  text-decoration: none;
+}
+
+.callsign a:hover {
+  text-decoration: underline;
 }
 
 .wota-ref {

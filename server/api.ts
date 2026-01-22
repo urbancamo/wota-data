@@ -958,14 +958,14 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
       select: {
         wotaid: true,
         date: true,
-        callused: true,
+        activatedby: true,
       },
       distinct: ['wotaid'],
     })
 
     // Get summit details for the recent activations
     const recentSummits = await Promise.all(
-      recentActivations.map(async (activation: { wotaid: any; date: any; callused: any }) => {
+      recentActivations.map(async (activation: { wotaid: any; date: any; activatedby: any }) => {
         const summit = await prisma.summit.findUnique({
           where: { wotaid: activation.wotaid },
           select: { wotaid: true, name: true },
@@ -974,7 +974,7 @@ app.get('/data/api/statistics', requireAuth, async (req, res) => {
           wotaid: activation.wotaid,
           name: summit?.name || `Summit ${activation.wotaid}`,
           date: activation.date,
-          callsign: activation.callused,
+          callsign: activation.activatedby,
         }
       })
     )
@@ -1028,7 +1028,7 @@ app.get('/data/api/activation/contacts', requireAuth, async (req, res) => {
     const contacts = await prisma.activatorLog.findMany({
       where: {
         wotaid,
-        callused: callsign,
+        activatedby: callsign,
         date: new Date(date),
       },
       select: {
