@@ -754,8 +754,8 @@ app.get('/data/api/spots', requireAuth, async (req, res) => {
   }
 })
 
-// Get all summits
-app.get('/data/api/summits', requireAuth, async (req, res) => {
+// Get all summits (public endpoint - no auth required)
+app.get('/data/api/summits', async (req, res) => {
   try {
     const summits = await prisma.summit.findMany({
       orderBy: { wotaid: 'asc' },
@@ -767,8 +767,8 @@ app.get('/data/api/summits', requireAuth, async (req, res) => {
   }
 })
 
-// Proxy for summits GeoJSON (avoids CORS issues)
-app.get('/data/api/summits/geojson', requireAuth, async (req, res) => {
+// Proxy for summits GeoJSON (avoids CORS issues) - public endpoint
+app.get('/data/api/summits/geojson', async (req, res) => {
   try {
     const response = await fetch('https://www.wota.org.uk/mapping/data/summits.json')
     if (!response.ok) {
@@ -782,8 +782,8 @@ app.get('/data/api/summits/geojson', requireAuth, async (req, res) => {
   }
 })
 
-// Get all activations for a specific summit (one row per unique activator and date)
-app.get('/data/api/summits/:wotaid/activations', requireAuth, async (req, res) => {
+// Get all activations for a specific summit (one row per unique activator and date) - public endpoint
+app.get('/data/api/summits/:wotaid/activations', async (req, res) => {
   try {
     const wotaid = parseInt(req.params.wotaid, 10)
 
@@ -853,8 +853,8 @@ async function lookupSotaSummit(sotaRef: string, _req: any, res: any) {
 }
 
 // Look up summit by SOTA reference (URL-encoded version, e.g., G%2FLD-012)
-// This handles when the client URL-encodes the slash
-app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
+// This handles when the client URL-encodes the slash - public endpoint
+app.get('/data/api/summits/sota/:reference', async (req, res) => {
   try {
     // Decode the reference parameter (converts %2F back to /)
     const sotaRef = decodeURIComponent(req.params.reference).toUpperCase()
@@ -867,8 +867,8 @@ app.get('/data/api/summits/sota/:reference', requireAuth, async (req, res) => {
 
 // Look up summit by SOTA reference (path-based version, e.g., /G/LD-012)
 // SOTA references to have format: ASSOCIATION/REGION-NUMBER (e.g., G/LD-056)
-// Use two path parameters to capture both parts of the reference
-app.get('/data/api/summits/sota/:association/:region', requireAuth, async (req, res) => {
+// Use two path parameters to capture both parts of the reference - public endpoint
+app.get('/data/api/summits/sota/:association/:region', async (req, res) => {
   try {
     // Reconstruct the full SOTA reference from path parameters
     const association = req.params.association.toUpperCase()
