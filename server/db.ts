@@ -2,7 +2,13 @@ import mysql from 'mysql2/promise'
 import { PrismaClient } from '@prisma/client'
 
 // Prisma client for WOTA Spotter database
-export const prisma = new PrismaClient()
+export const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: `${process.env.WOTA_DATABASE_URL}?connection_limit=20&pool_timeout=30`,
+    },
+  },
+})
 
 // MySQL connection pool for CMS database
 let cmsPool: mysql.Pool | null = null

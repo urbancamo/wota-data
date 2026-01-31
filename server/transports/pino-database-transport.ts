@@ -2,7 +2,14 @@ import build from 'pino-abstract-transport'
 import { PrismaClient } from '@prisma/client'
 import os from 'os'
 
-const prisma = new PrismaClient()
+// Transport runs in a worker thread, so needs its own client with limited pool
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: `${process.env.WOTA_DATABASE_URL}?connection_limit=3&pool_timeout=30`,
+    },
+  },
+})
 
 // Extract useful information from the log object
 function extractLogData(log: any) {
@@ -72,23 +79,53 @@ function extractLogData(log: any) {
   }
 }
 
+const BATCH_SIZE = 50
+const FLUSH_INTERVAL_MS = 1000
+
 export default async function (opts: any) {
   return build(async function (source) {
+    let buffer: ReturnType<typeof extractLogData>[] = []
+    let flushTimeout: NodeJS.Timeout | null = null
+    let flushing = false
+
+    async function flush() {
+      if (buffer.length === 0 || flushing) return
+      flushing = true
+      const toFlush = buffer
+      buffer = []
+      if (flushTimeout) {
+        clearTimeout(flushTimeout)
+        flushTimeout = null
+      }
+      try {
+        await prisma.log.createMany({ data: toFlush })
+      } catch (error) {
+        console.error('Failed to write logs to database:', error)
+      }
+      flushing = false
+    }
+
+    function scheduleFlush() {
+      if (!flushTimeout) {
+        flushTimeout = setTimeout(flush, FLUSH_INTERVAL_MS)
+      }
+    }
+
     for await (const obj of source) {
       try {
         const logData = extractLogData(obj)
-
-        // Insert log into database (non-blocking)
-        prisma.log.create({
-          data: logData
-        }).catch((error: any) => {
-          // If database insert fails, log to console but don't crash
-          console.error('Failed to write log to database:', error)
-        })
+        buffer.push(logData)
+        if (buffer.length >= BATCH_SIZE) {
+          await flush()
+        } else {
+          scheduleFlush()
+        }
       } catch (error) {
-        // If parsing fails, log to console but don't crash the transport
         console.error('Failed to parse log entry:', error)
       }
     }
+
+    // Flush remaining logs on stream end
+    await flush()
   })
 }
