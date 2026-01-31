@@ -105,6 +105,8 @@ app.post('/data/api/auth/login', async (req, res) => {
     req.session.username = user.username
     req.session.isAdmin = isAdmin
 
+    logger.info({ username: user.username, userId: user.id, isAdmin }, 'User logged in')
+
     res.json({
       success: true,
       user: {
