@@ -141,6 +141,8 @@ export async function executeCommand(
 
   logger.debug({ callsign: client.callsign, command, args }, 'Executing cluster command')
 
+  const CTRL_C = '\x03';
+
   // Handle commands
   switch (command) {
     case 'sh/dx':
@@ -178,6 +180,7 @@ export async function executeCommand(
     case 'bye':
     case 'quit':
     case 'exit':
+    case CTRL_C:
       sendToClient(client, '73 de WOTA cluster. Goodbye!\r\n')
       cleanupClient(client)
       return { handled: true, disconnect: true }
@@ -202,10 +205,8 @@ export async function sendInitialSpots(client: ClusterClient): Promise<void> {
   try {
     const spots = await getRecentSpots(10)
     if (spots.length > 0) {
-      sendToClient(client, '\r\nRecent spots:\r\n')
       const output = formatSpotList(spots)
       sendToClient(client, output)
-      sendToClient(client, '\r\n')
     }
   } catch (error) {
     logger.error({ error, callsign: client.callsign }, 'Error sending initial spots')
