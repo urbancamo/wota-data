@@ -16,6 +16,7 @@ import { logger } from './logger'
 import { loggingMiddleware } from './middleware/loggingMiddleware'
 import { stripPortableSuffix } from '../shared/utils'
 import { PrismaClient } from "@prisma/client";
+import { ClusterServer } from './cluster'
 
 // Type definitions
 type ActivatorLogExport = {
@@ -1719,19 +1720,34 @@ app.get('/data/api/admin/logs', requireAuth, async (req, res) => {
   }
 })
 
+// Cluster server instance
+const CLUSTER_PORT = parseInt(process.env.CLUSTER_PORT || '7300', 10)
+const clusterServer = new ClusterServer(CLUSTER_PORT)
+
 // Graceful shutdown
 process.on('SIGINT', async () => {
+  logger.info('SIGINT received, shutting down...')
+  await clusterServer.stop()
   await disconnectDatabases()
   process.exit(0)
 })
 
 process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, shutting down...')
+  await clusterServer.stop()
   await disconnectDatabases()
   process.exit(0)
 })
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   logger.info({ port: PORT }, `API server running on http://localhost:${PORT}`)
+
+  // Start cluster server
+  try {
+    await clusterServer.start()
+  } catch (error) {
+    logger.error({ error }, 'Failed to start cluster server')
+  }
 })
 
 server.on('error', (error: NodeJS.ErrnoException) => {
