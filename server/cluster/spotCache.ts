@@ -96,6 +96,28 @@ export class SpotCache {
   }
 
   /**
+   * Remove spots from cache that have been deleted from the database
+   */
+  private async pruneDeletedSpots(): Promise<void> {
+    if (this.spots.length === 0) return
+
+    const cachedIds = this.spots.map(s => s.id)
+    const existingSpots = await prisma.spot.findMany({
+      where: { id: { in: cachedIds } },
+      select: { id: true }
+    })
+    const existingIds = new Set(existingSpots.map(s => s.id))
+
+    const beforeCount = this.spots.length
+    this.spots = this.spots.filter(s => existingIds.has(s.id))
+    const prunedCount = beforeCount - this.spots.length
+
+    if (prunedCount > 0) {
+      logger.info({ prunedCount }, 'Removed deleted spots from cache')
+    }
+  }
+
+  /**
    * Poll for new spots and return any new ones
    */
   async pollForNewSpots(): Promise<SpotWithSummit[]> {
@@ -126,6 +148,9 @@ export class SpotCache {
 
       // Mark as successfully loaded even if no new spots (DB connection worked)
       this.hasSuccessfullyLoaded = true
+
+      // Check for deleted spots and remove them from cache
+      await this.pruneDeletedSpots()
 
       if (newSpots.length > 0) {
         // Update cache
