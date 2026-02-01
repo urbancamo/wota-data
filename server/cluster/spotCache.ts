@@ -149,9 +149,7 @@ export class SpotCache {
       // Mark as successfully loaded even if no new spots (DB connection worked)
       this.hasSuccessfullyLoaded = true
 
-      // Check for deleted spots and remove them from cache
-      await this.pruneDeletedSpots()
-
+      // Add new spots first before pruning
       if (newSpots.length > 0) {
         // Update cache
         this.spots.push(...newSpots)
@@ -166,6 +164,13 @@ export class SpotCache {
           { newSpotCount: newSpots.length, lastSpotId: this.lastSpotId },
           'Added new spots to cache'
         )
+      }
+
+      // Check for deleted spots and remove them from cache (non-blocking)
+      try {
+        await this.pruneDeletedSpots()
+      } catch (error) {
+        logger.warn({ error }, 'Failed to prune deleted spots, will retry next poll')
       }
 
       return newSpots
