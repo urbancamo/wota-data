@@ -18,6 +18,58 @@ export class AuthError extends Error {
   }
 }
 
+/*
+ * Replicates the my_htmlentities() function from CMS Made Simple's
+ * lib/misc.functions.php (lines 346-376).
+ *
+ * This encoding is applied to passwords before MD5 hashing in the
+ * FrontEndUsers module via the CLEAN_STRING parameter type.
+ *
+ * IMPORTANT: The order of replacements matters - & must be replaced
+ * first before other entities that contain &.
+ */
+function cmsHtmlEntities(val: string): string {
+  if (val === "") {
+    return "";
+  }
+
+  // Replace &#032; with space (line 352)
+  val = val.replace(/&#032;/g, " ");
+
+  // Replace & with &amp; FIRST (line 357)
+  // This must happen before other replacements that produce & entities
+  val = val.replace(/&/g, "&amp;");
+
+  // Replace <!-- with &#60;&#33;-- (line 358)
+  val = val.replace(/<!--/g, "&#60;&#33;--");
+
+  // Replace --> with --&#62; (line 359)
+  val = val.replace(/-->/g, "--&#62;");
+
+  // Replace <script (case insensitive) with &#60;script (line 360)
+  val = val.replace(/<script/gi, "&#60;script");
+
+  // Replace > with &gt; (line 361)
+  val = val.replace(/>/g, "&gt;");
+
+  // Replace < with &lt; (line 362)
+  val = val.replace(/</g, "&lt;");
+
+  // Replace " with &quot; (line 365)
+  val = val.replace(/"/g, "&quot;");
+
+  // Replace $ with &#036; (line 370)
+  val = val.replace(/\$/g, "&#036;");
+
+  // Replace ! with &#33; (line 375)
+  val = val.replace(/!/g, "&#33;");
+
+  // Replace ' with &#39; (line 376)
+  val = val.replace(/'/g, "&#39;");
+
+  return val;
+}
+
 export class AuthService {
   // Verify credentials against CMS database
   async verifyCredentials(username: string, password: string): Promise<User> {
@@ -41,8 +93,11 @@ export class AuthService {
 
       const user = userRows[0]
 
+      // Modify the supplied password in the same way that CMS Made Simple FrontEndUsers does
+      // in escaping HTML characters.
+      const mungedPassword = cmsHtmlEntities(password);
       // Hash password with MD5
-      const hashedPassword = crypto.createHash('md5').update(password).digest('hex')
+      const hashedPassword = crypto.createHash('md5').update(mungedPassword).digest('hex')
 
       // Check if password matches
       if (user.password !== hashedPassword) {
