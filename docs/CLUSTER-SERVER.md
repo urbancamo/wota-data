@@ -1,3 +1,5 @@
+## Requirements
+
 This is the specification for a Cluster server. This is a telnet server that accepts
 connections on port 7300. The server should be written using the Node.JS net module.
 It can use the existing database access routines to retrieve new spots.
@@ -93,3 +95,29 @@ There’s plenty of exception handling around calls that can fail and that means
 run for a very long time because the exception handlers catch the crashing things! 
 I think the longest uptime is about 9months. Normally I need to reboot the server 
 because of updates etc. before that.
+
+## Implementation Notes
+
+Here's what was implemented:
+
+New file: server/cluster/spotCache.ts
+- Centralized spot cache holding up to 100 spots in memory
+- Retry logic with exponential backoff (1s → 2s → 5s → 10s → 30s)
+- Database failures are transparent to users - cache keeps serving last known spots
+- Single point of database access for spots
+
+Changes to existing files:
+- types.ts: Added lastSeenSpotId to track which spots each client has received
+- client.ts: Initialize lastSeenSpotId to 0 for new clients
+- spotPoller.ts: Uses cache instead of direct DB calls, skips already-seen spots per client
+- commands.ts: sh/dx and sendInitialSpots now use the cache (synchronous), tracks lastSeenSpotId
+- index.ts: Updated to match synchronous sendInitialSpots
+
+How it works:
+1. On startup, cache initializes with 100 recent spots (with retries)
+2. Poller fetches new spots every 5s and adds to cache
+3. When client logs in, they get spots from cache and lastSeenSpotId is set
+4. When poller broadcasts new spots, it skips any the client already received
+5. Manual sh/dx commands also read from cache (instant, no DB wait)
+6. If DB fails, users see cached spots and retries happen silently in background                                                                                        
+                                

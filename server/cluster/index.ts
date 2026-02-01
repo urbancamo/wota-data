@@ -72,9 +72,20 @@ export class ClusterServer {
 
     // Handle incoming data
     let buffer = ''
+    const CTRL_C = '\x03'
 
     socket.on('data', async (data) => {
-      buffer += data.toString()
+      const str = data.toString()
+
+      // Check for Ctrl-C - disconnect immediately
+      if (str.includes(CTRL_C)) {
+        sendToClient(client, '\r\n73 de WOTA cluster. Goodbye!\r\n')
+        cleanupClient(client)
+        this.clients.delete(clientId)
+        return
+      }
+
+      buffer += str
 
       // Process complete lines
       let lineEnd: number
@@ -116,8 +127,8 @@ export class ClusterServer {
     if (!client.authenticated) {
       const success = authenticateClient(client, input)
       if (success) {
-        // Send initial spots and prompt
-        await sendInitialSpots(client)
+        // Send initial spots from cache and prompt
+        sendInitialSpots(client)
         sendPrompt(client)
       }
       return
@@ -129,12 +140,6 @@ export class ClusterServer {
     if (result.disconnect) {
       this.clients.delete(clientId)
     }
-  }
-
-  getConnectedCount(): number {
-    return Array.from(this.clients.values())
-      .filter(c => c.authenticated)
-      .length
   }
 }
 

@@ -1726,21 +1726,6 @@ app.get('/data/api/admin/logs', requireAuth, async (req, res) => {
 const CLUSTER_PORT = parseInt(process.env.CLUSTER_PORT || '7300', 10)
 const clusterServer = new ClusterServer(CLUSTER_PORT)
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, shutting down...')
-  await clusterServer.stop()
-  await disconnectDatabases()
-  process.exit(0)
-})
-
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down...')
-  await clusterServer.stop()
-  await disconnectDatabases()
-  process.exit(0)
-})
-
 const server = app.listen(PORT, async () => {
   logger.info({ port: PORT }, `API server running on http://localhost:${PORT}`)
 
@@ -1761,3 +1746,29 @@ server.on('error', (error: NodeJS.ErrnoException) => {
     process.exit(1)
   }
 })
+
+// Graceful shutdown
+async function shutdown(signal: string) {
+  logger.info({ signal }, 'Shutdown initiated')
+
+  try {
+    await clusterServer.stop()
+
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        logger.info('HTTP server closed')
+        resolve()
+      })
+    })
+
+    await disconnectDatabases()
+    logger.info('Shutdown complete')
+  } catch (error) {
+    logger.error({ error }, 'Error during shutdown')
+  }
+
+  process.exit(0)
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('SIGTERM', () => shutdown('SIGTERM'))

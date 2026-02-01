@@ -7,6 +7,7 @@ export interface ClusterClient {
   pingInterval: NodeJS.Timeout | null
   pingMinutes: number
   connectedAt: Date
+  lastSeenSpotId: number
 }
 
 export interface SpotWithSummit {

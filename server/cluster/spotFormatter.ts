@@ -63,17 +63,13 @@ export function formatSpot(spot: SpotWithSummit): string {
   const freqStr = freq.toFixed(1).padStart(9)
   const call = spot.call.trim().padEnd(13)
 
-  // Build summit info
-  let summitInfo: string
-  if (spot.summit) {
-    const ref = spot.summit.reference
-    const name = spot.summit.name
-    summitInfo = `${ref} ${name}`
-  } else {
-    summitInfo = formatWotaReference(spot.wotaid)
-  }
-  // Truncate or pad to 32 chars
-  summitInfo = summitInfo.substring(0, 32).padEnd(32)
+  // Build comment field: "WOTA: LDW-123 <comment>"
+  const ref = formatWotaReference(spot.wotaid)
+  const prefix = `WOTA: ${ref} `
+  const comment = spot.comment?.trim() ?? ''
+  const maxCommentLen = 32 - prefix.length
+  const truncatedComment = comment.substring(0, maxCommentLen)
+  const summitInfo = (prefix + truncatedComment).padEnd(32)
 
   const time = formatZuluTime(spot.datetime)
 

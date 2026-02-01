@@ -11,25 +11,11 @@ type PrismaOperation =
   // Mutation operations (stubbed)
   | 'create' | 'createMany' | 'update' | 'updateMany' | 'delete' | 'deleteMany' | 'upsert'
 
-interface LoggedOperation {
-  model: string
-  operation: PrismaOperation
-  args?: any
-  timestamp: string
-}
-
 /**
  * Creates a stubbed Prisma client that logs operations instead of executing them
  */
 export function createPrismaStub(realPrisma: any): any {
   const logOperation = (model: string, operation: PrismaOperation, args?: any) => {
-    const log: LoggedOperation = {
-      model,
-      operation,
-      args,
-      timestamp: new Date().toISOString(),
-    }
-
     console.log('\n📝 DATABASE OPERATION (STUBBED):')
     console.log(`   Model: ${model}`)
     console.log(`   Operation: ${operation}`)

@@ -1,11 +1,10 @@
-import type { ClusterClient, SpotWithSummit } from './types'
+import type { ClusterClient } from './types'
 import { formatSpot } from './spotFormatter'
 import { sendToClient } from './client'
-import { prisma } from '../db'
+import { spotCache } from './spotCache'
 import { logger } from '../logger'
 
 export class SpotPoller {
-  private lastSpotId: number = 0
   private pollInterval: NodeJS.Timeout | null = null
   private clients: Map<string, ClusterClient>
   private intervalMs: number
@@ -16,8 +15,8 @@ export class SpotPoller {
   }
 
   async start(): Promise<void> {
-    // Initialize lastSpotId with the current max
-    await this.initializeLastSpotId()
+    // Initialize the cache
+    await spotCache.initialize()
 
     // Start polling
     this.pollInterval = setInterval(() => {
@@ -37,60 +36,10 @@ export class SpotPoller {
     }
   }
 
-  private async initializeLastSpotId(): Promise<void> {
-    try {
-      const latestSpot = await prisma.spot.findFirst({
-        orderBy: { id: 'desc' },
-        select: { id: true }
-      })
-
-      this.lastSpotId = latestSpot?.id ?? 0
-      logger.info({ lastSpotId: this.lastSpotId }, 'Initialized spot poller')
-    } catch (error) {
-      logger.error({ error }, 'Error initializing spot poller')
-      this.lastSpotId = 0
-    }
-  }
-
   private async poll(): Promise<void> {
-    try {
-      // Get new spots since last poll
-      const newSpots = await prisma.spot.findMany({
-        where: {
-          id: { gt: this.lastSpotId }
-        },
-        orderBy: { id: 'asc' }
-      })
+    const newSpots = await spotCache.pollForNewSpots()
 
-      if (newSpots.length === 0) {
-        return
-      }
-
-      // Update lastSpotId
-      this.lastSpotId = newSpots[newSpots.length - 1].id
-
-      // Get summit info for each spot
-      const spotsWithSummits: SpotWithSummit[] = await Promise.all(
-        newSpots.map(async (spot) => {
-          const summit = await prisma.summit.findUnique({
-            where: { wotaid: spot.wotaid },
-            select: { reference: true, name: true }
-          })
-          return {
-            ...spot,
-            summit
-          }
-        })
-      )
-
-      // Broadcast to all authenticated clients
-      this.broadcastSpots(spotsWithSummits)
-    } catch (error) {
-      logger.error({ error }, 'Error polling for new spots')
-    }
-  }
-
-  private broadcastSpots(spots: SpotWithSummit[]): void {
+    // Get all authenticated clients
     const authenticatedClients = Array.from(this.clients.values())
       .filter(c => c.authenticated)
 
@@ -98,17 +47,60 @@ export class SpotPoller {
       return
     }
 
+    // Backfill clients who logged in during a DB outage (lastSeenSpotId = 0)
+    // and haven't received any spots yet
+    if (spotCache.hasSpots()) {
+      const clientsNeedingBackfill = authenticatedClients.filter(c => c.lastSeenSpotId === 0)
+      if (clientsNeedingBackfill.length > 0) {
+        const backfillSpots = spotCache.getRecentSpots(10)
+        if (backfillSpots.length > 0) {
+          logger.info({
+            clientCount: clientsNeedingBackfill.length,
+            spotCount: backfillSpots.length
+          }, 'Backfilling spots to clients who missed initial spots')
+
+          for (const spot of backfillSpots) {
+            const formatted = formatSpot(spot)
+            for (const client of clientsNeedingBackfill) {
+              try {
+                sendToClient(client, formatted)
+              } catch (error) {
+                logger.error({ error, callsign: client.callsign }, 'Error backfilling spot to client')
+              }
+            }
+          }
+
+          // Update lastSeenSpotId for backfilled clients
+          const lastBackfillId = backfillSpots[backfillSpots.length - 1].id
+          for (const client of clientsNeedingBackfill) {
+            client.lastSeenSpotId = lastBackfillId
+          }
+        }
+      }
+    }
+
+    // Broadcast new spots
+    if (newSpots.length === 0) {
+      return
+    }
+
     logger.info({
-      spotCount: spots.length,
+      spotCount: newSpots.length,
       clientCount: authenticatedClients.length
     }, 'Broadcasting new spots')
 
-    for (const spot of spots) {
+    for (const spot of newSpots) {
       const formatted = formatSpot(spot)
 
       for (const client of authenticatedClients) {
+        // Skip if client has already seen this spot
+        if (spot.id <= client.lastSeenSpotId) {
+          continue
+        }
+
         try {
           sendToClient(client, formatted)
+          client.lastSeenSpotId = spot.id
         } catch (error) {
           logger.error({
             error,

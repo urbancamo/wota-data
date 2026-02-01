@@ -1,7 +1,7 @@
-import type {ClusterClient, SpotWithSummit} from './types'
+import type {ClusterClient} from './types'
 import {cleanupClient, sendPrompt, sendToClient, setupPingInterval} from './client'
 import {formatSpotList} from './spotFormatter'
-import {prisma} from '../db'
+import {spotCache} from './spotCache'
 import {logger} from '../logger'
 
 export type CommandResult = {
@@ -10,33 +10,9 @@ export type CommandResult = {
 }
 
 /**
- * Get recent spots with summit info
+ * Handle sh/dx command - show recent spots from cache
  */
-async function getRecentSpots(limit: number = 25): Promise<SpotWithSummit[]> {
-  const spots = await prisma.spot.findMany({
-    orderBy: { datetime: 'desc' },
-    take: limit
-  })
-
-  // Get summit info for each spot
-  return await Promise.all(
-    spots.map(async (spot) => {
-      const summit = await prisma.summit.findUnique({
-        where: {wotaid: spot.wotaid},
-        select: {reference: true, name: true}
-      })
-      return {
-        ...spot,
-        summit
-      }
-    })
-  )
-}
-
-/**
- * Handle sh/dx command - show recent spots
- */
-async function handleShowDx(client: ClusterClient, args: string[]): Promise<void> {
+function handleShowDx(client: ClusterClient, args: string[]): void {
   // Parse optional count argument (default 25, max 50)
   let count = 25
   if (args.length > 0) {
@@ -46,14 +22,9 @@ async function handleShowDx(client: ClusterClient, args: string[]): Promise<void
     }
   }
 
-  try {
-    const spots = await getRecentSpots(count)
-    const output = formatSpotList(spots)
-    sendToClient(client, output)
-  } catch (error) {
-    logger.error({ error, callsign: client.callsign }, 'Error fetching spots for sh/dx')
-    sendToClient(client, 'Error fetching spots. Please try again.\r\n')
-  }
+  const spots = spotCache.getRecentSpots(count)
+  const output = formatSpotList(spots)
+  sendToClient(client, output)
 }
 
 /**
@@ -141,13 +112,11 @@ export async function executeCommand(
 
   logger.debug({ callsign: client.callsign, command, args }, 'Executing cluster command')
 
-  const CTRL_C = '\x03';
-
   // Handle commands
   switch (command) {
     case 'sh/dx':
     case 'show/dx':
-      await handleShowDx(client, args)
+      handleShowDx(client, args)
       sendPrompt(client)
       return { handled: true }
 
@@ -180,7 +149,6 @@ export async function executeCommand(
     case 'bye':
     case 'quit':
     case 'exit':
-    case CTRL_C:
       sendToClient(client, '73 de WOTA cluster. Goodbye!\r\n')
       cleanupClient(client)
       return { handled: true, disconnect: true }
@@ -199,16 +167,22 @@ export async function executeCommand(
 }
 
 /**
- * Send initial spots to newly authenticated client
+ * Send initial spots to newly authenticated client from cache
  */
-export async function sendInitialSpots(client: ClusterClient): Promise<void> {
-  try {
-    const spots = await getRecentSpots(10)
-    if (spots.length > 0) {
-      const output = formatSpotList(spots)
-      sendToClient(client, output)
-    }
-  } catch (error) {
-    logger.error({ error, callsign: client.callsign }, 'Error sending initial spots')
+export function sendInitialSpots(client: ClusterClient): void {
+  logger.debug({ callsign: client.callsign }, 'Sending initial spots from cache')
+
+  const spots = spotCache.getRecentSpots(10)
+  logger.debug({ callsign: client.callsign, spotCount: spots.length }, 'Retrieved initial spots from cache')
+
+  if (spots.length > 0) {
+    const output = formatSpotList(spots)
+    sendToClient(client, output)
+    // Track the last spot ID so broadcast won't send duplicates
+    client.lastSeenSpotId = spots[spots.length - 1].id
+  } else if (spotCache.isReady()) {
+    // Only show message if DB is connected but genuinely no spots
+    sendToClient(client, 'No recent spots available.\r\n')
   }
+  // If cache not ready (DB issue), say nothing - spots will be backfilled later
 }

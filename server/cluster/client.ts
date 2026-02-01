@@ -40,7 +40,8 @@ export function createClient(socket: Socket): ClusterClient {
     authenticated: false,
     pingInterval: null,
     pingMinutes: 0,
-    connectedAt: new Date()
+    connectedAt: new Date(),
+    lastSeenSpotId: 0
   }
 }
 
