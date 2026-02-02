@@ -58,22 +58,22 @@ export function formatZuluTime(date: Date): string {
  * - Columns 71-75: Time in Zulu
  */
 export function formatSpot(spot: SpotWithSummit): string {
-  const spotter = spot.spotter.trim().padEnd(8)
+  const spotter = spot.spotter.trim().concat(':').padEnd(7)
   const freq = parseFrequency(spot.freqmode)
   const freqStr = freq.toFixed(1).padStart(9)
   const call = spot.call.trim().padEnd(13)
 
   // Build comment field: "WOTA: LDW-123 <comment>"
   const ref = formatWotaReference(spot.wotaid)
-  const prefix = `WOTA: ${ref} `
+  const prefix = `[WOTA] ${ref} `
   const comment = spot.comment?.trim() ?? ''
-  const maxCommentLen = 32 - prefix.length
+  const maxCommentLen = 30 - prefix.length
   const truncatedComment = comment.substring(0, maxCommentLen)
-  const summitInfo = (prefix + truncatedComment).padEnd(32)
+  const summitInfo = (prefix + truncatedComment).padEnd(31)
 
   const time = formatZuluTime(spot.datetime)
 
-  return `DX de ${spotter}: ${freqStr}  ${call}${summitInfo}${time}\r\n`
+  return `DX de ${spotter} ${freqStr}  ${call}${summitInfo}${time}\r\n`
 }
 
 /**
