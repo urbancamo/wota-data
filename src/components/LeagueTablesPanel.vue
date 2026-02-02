@@ -1,14 +1,28 @@
 <script setup lang="ts">
 import { onMounted, ref, computed, watch } from 'vue'
 import { showNotify } from 'vant'
-import { apiClient, type LeagueTableEntry } from '../services/api'
+import { Bar } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js'
+import { apiClient, type LeagueTableEntry, type YearlyActivationStats } from '../services/api'
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 const loading = ref(true)
+const chartLoading = ref(true)
 const currentYear = new Date().getFullYear()
 const selectedYear = ref(currentYear)
 const fellWalkers = ref<LeagueTableEntry[]>([])
 const fellChasers = ref<LeagueTableEntry[]>([])
 const fellWatchers = ref<LeagueTableEntry[]>([])
+const yearlyActivations = ref<YearlyActivationStats[]>([])
 
 // Generate year options from 2009 to current year
 const yearOptions = computed(() => {
@@ -18,6 +32,126 @@ const yearOptions = computed(() => {
   }
   return options
 })
+
+// Chart configuration - Unique Fells
+const uniqueFellsChartData = computed(() => ({
+  labels: yearlyActivations.value.map(d => d.year.toString()),
+  datasets: [
+    {
+      label: 'Unique Fells Activated',
+      backgroundColor: '#1989fa',
+      data: yearlyActivations.value.map(d => d.uniqueFells)
+    }
+  ]
+}))
+
+// Chart configuration - Activator Contacts
+const activatorContactsChartData = computed(() => ({
+  labels: yearlyActivations.value.map(d => d.year.toString()),
+  datasets: [
+    {
+      label: 'Total Activator Contacts',
+      backgroundColor: '#07c160',
+      data: yearlyActivations.value.map(d => d.activatorContacts)
+    }
+  ]
+}))
+
+// Chart configuration - Chaser Contacts
+const chaserContactsChartData = computed(() => ({
+  labels: yearlyActivations.value.map(d => d.year.toString()),
+  datasets: [
+    {
+      label: 'Total Chaser Contacts',
+      backgroundColor: '#ff976a',
+      data: yearlyActivations.value.map(d => d.chaserContacts)
+    }
+  ]
+}))
+
+const uniqueFellsChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      display: false
+    },
+    title: {
+      display: false
+    }
+  },
+  scales: {
+    x: {
+      title: {
+        display: true,
+        text: 'Year'
+      }
+    },
+    y: {
+      title: {
+        display: true,
+        text: 'Unique Fells Activated'
+      },
+      beginAtZero: true
+    }
+  }
+}
+
+const activatorContactsChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      display: false
+    },
+    title: {
+      display: false
+    }
+  },
+  scales: {
+    x: {
+      title: {
+        display: true,
+        text: 'Year'
+      }
+    },
+    y: {
+      title: {
+        display: true,
+        text: 'Total Activator Contacts'
+      },
+      beginAtZero: true
+    }
+  }
+}
+
+const chaserContactsChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      display: false
+    },
+    title: {
+      display: false
+    }
+  },
+  scales: {
+    x: {
+      title: {
+        display: true,
+        text: 'Year'
+      }
+    },
+    y: {
+      title: {
+        display: true,
+        text: 'Total Chaser Contacts'
+      },
+      beginAtZero: true
+    }
+  }
+}
 
 async function fetchLeagueTables() {
   try {
@@ -37,12 +171,28 @@ async function fetchLeagueTables() {
   }
 }
 
+async function fetchYearlyActivations() {
+  try {
+    chartLoading.value = true
+    yearlyActivations.value = await apiClient.getYearlyActivations()
+  } catch (error) {
+    console.error('Error fetching yearly activations:', error)
+    showNotify({
+      type: 'warning',
+      message: error instanceof Error ? error.message : 'Failed to load yearly activations',
+    })
+  } finally {
+    chartLoading.value = false
+  }
+}
+
 watch(selectedYear, () => {
   fetchLeagueTables()
 })
 
 onMounted(() => {
   fetchLeagueTables()
+  fetchYearlyActivations()
 })
 </script>
 
@@ -128,6 +278,42 @@ onMounted(() => {
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Yearly Unique Fells Chart -->
+      <div class="chart-section">
+        <div class="section-title">Unique Fells Activated Per Year</div>
+        <div v-if="chartLoading" class="loading-container">
+          <van-loading type="spinner" size="24" />
+          <div class="loading-text">Loading chart...</div>
+        </div>
+        <div v-else class="chart-container">
+          <Bar :data="uniqueFellsChartData" :options="uniqueFellsChartOptions" />
+        </div>
+      </div>
+
+      <!-- Yearly Activator Contacts Chart -->
+      <div class="chart-section">
+        <div class="section-title">Total Activator Contacts Per Year</div>
+        <div v-if="chartLoading" class="loading-container">
+          <van-loading type="spinner" size="24" />
+          <div class="loading-text">Loading chart...</div>
+        </div>
+        <div v-else class="chart-container">
+          <Bar :data="activatorContactsChartData" :options="activatorContactsChartOptions" />
+        </div>
+      </div>
+
+      <!-- Yearly Chaser Contacts Chart -->
+      <div class="chart-section">
+        <div class="section-title">Total Chaser Contacts Per Year</div>
+        <div v-if="chartLoading" class="loading-container">
+          <van-loading type="spinner" size="24" />
+          <div class="loading-text">Loading chart...</div>
+        </div>
+        <div v-else class="chart-container">
+          <Bar :data="chaserContactsChartData" :options="chaserContactsChartOptions" />
         </div>
       </div>
     </div>
@@ -273,6 +459,18 @@ onMounted(() => {
   font-size: 13px;
 }
 
+.chart-section {
+  margin-top: 24px;
+  background: #f7f8fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.chart-container {
+  height: 300px;
+  width: 100%;
+}
+
 @media (max-width: 768px) {
   .tables-grid {
     grid-template-columns: 1fr;
@@ -280,6 +478,10 @@ onMounted(() => {
 
   .league-tables-panel {
     padding: 8px;
+  }
+
+  .chart-container {
+    height: 250px;
   }
 }
 </style>

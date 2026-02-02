@@ -54,6 +54,13 @@ export interface LeagueTablesResponse {
   fellWatchers: LeagueTableEntry[]
 }
 
+export interface YearlyActivationStats {
+  year: number
+  uniqueFells: number
+  activatorContacts: number
+  chaserContacts: number
+}
+
 export interface ActivationContact {
   time: string | null
   stncall: string
@@ -415,6 +422,19 @@ export const apiClient = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch league tables')
+    }
+
+    return response.json()
+  },
+
+  async getYearlyActivations(): Promise<YearlyActivationStats[]> {
+    const response = await fetch(`${API_BASE_URL}/yearly-activations`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch yearly activations')
     }
 
     return response.json()

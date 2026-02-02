@@ -1586,6 +1586,63 @@ app.get('/data/api/league-tables', requireAuth, async (req, res) => {
   }
 })
 
+// Yearly Activation Stats - Unique fells, activator contacts, and chaser contacts per year
+// Used for the bar charts on the statistics page
+app.get('/data/api/yearly-activations', requireAuth, async (req, res) => {
+  try {
+    const currentYear = new Date().getFullYear()
+    const startYear = 2009
+
+    // Get unique fells and total activator contacts per year
+    const activatorStats = await prisma.$queryRaw<Array<{
+      year: number
+      uniqueFells: bigint
+      totalContacts: bigint
+    }>>`
+      SELECT
+        year,
+        COUNT(DISTINCT wotaid) as uniqueFells,
+        COUNT(*) as totalContacts
+      FROM activator_log
+      WHERE year >= ${startYear} AND year <= ${currentYear}
+      GROUP BY year
+      ORDER BY year ASC
+    `
+
+    // Get total chaser contacts per year
+    const chaserStats = await prisma.$queryRaw<Array<{
+      year: number
+      totalContacts: bigint
+    }>>`
+      SELECT
+        year,
+        COUNT(*) as totalContacts
+      FROM chaser_log
+      WHERE year >= ${startYear} AND year <= ${currentYear}
+      GROUP BY year
+      ORDER BY year ASC
+    `
+
+    // Fill in any missing years with 0
+    const result: Array<{ year: number; uniqueFells: number; activatorContacts: number; chaserContacts: number }> = []
+    for (let y = startYear; y <= currentYear; y++) {
+      const activator = activatorStats.find(t => t.year === y)
+      const chaser = chaserStats.find(t => t.year === y)
+      result.push({
+        year: y,
+        uniqueFells: activator ? Number(activator.uniqueFells) : 0,
+        activatorContacts: activator ? Number(activator.totalContacts) : 0,
+        chaserContacts: chaser ? Number(chaser.totalContacts) : 0
+      })
+    }
+
+    res.json(result)
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching yearly activations')
+    res.status(500).json({ error: 'Failed to fetch yearly activations' })
+  }
+})
+
 // Challenge: 2026 2m/70cm SSB & CW Challenge - Activator Leaderboard
 // Scoring: 1 point per unique fell per band/mode combination in 2026
 app.get('/data/api/challenge/2026-vhf/activators', requireAuth, async (req, res) => {
