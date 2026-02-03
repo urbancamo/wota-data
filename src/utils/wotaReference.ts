@@ -88,14 +88,14 @@ export function formatBookName(bookCode: string | null | undefined): string {
   }
 
   const bookNames: Record<string, string> = {
-    'E': 'The Eastern Fells',
-    'FE': 'The Far Eastern Fells',
-    'C': 'The Central Fells',
-    'S': 'The Southern Fells',
-    'N': 'The Northern Fells',
-    'NW': 'The North Western Fells',
-    'W': 'The Western Fells',
-    'O': 'The Outlying Fells'
+    'E': 'Eastern Fells',
+    'FE': 'Far Eastern Fells',
+    'C': 'Central Fells',
+    'S': 'Southern Fells',
+    'N': 'Northern Fells',
+    'NW': 'North Western Fells',
+    'W': 'Western Fells',
+    'OF': 'Outlying Fells'
   }
 
   return bookNames[bookCode.toUpperCase()] || bookCode
