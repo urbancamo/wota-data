@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client'
 export const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: `${process.env.WOTA_DATABASE_URL}?connection_limit=20&pool_timeout=30`,
+      url: `${process.env.WOTA_DATABASE_URL}?connection_limit=50&pool_timeout=30`,
     },
   },
 })
