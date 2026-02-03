@@ -1701,6 +1701,7 @@ app.get('/data/api/challenge/2026-vhf/chasers', requireAuth, async (req, res) =>
       INNER JOIN activator_log a ON
         c.stncall = a.callused
         AND c.wotaid = a.wotaid
+        AND c.wkdby = a.stncall
         AND DATE(c.date) = DATE(a.date)
       WHERE a.year = 2026
         AND a.band IN ('2m', '70cm')
