@@ -243,7 +243,8 @@ export const apiClient = {
     }
 
     if (!response.ok) {
-      throw new Error('Failed to lookup SOTA reference')
+      const errorText = await response.text()
+      throw new Error(`Failed to lookup SOTA reference: ${response.status} ${errorText}`)
     }
 
     return response.json()
