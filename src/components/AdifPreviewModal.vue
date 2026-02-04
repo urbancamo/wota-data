@@ -145,13 +145,20 @@ function formatTime(adifTime?: string): string {
   return `${hours}:${minutes}`
 }
 
+function getWotaSigInfo(record: AdifRecord): string | undefined {
+  // Only return sig_info values where the SIG field is WOTA (not BOTA, POTA, etc.)
+  const mySigInfo = record.my_sig?.toUpperCase() === 'WOTA' ? record.my_sig_info : undefined
+  const sigInfo = record.sig?.toUpperCase() === 'WOTA' ? record.sig_info : undefined
+  return mySigInfo || sigInfo
+}
+
 function getSummit(record: AdifRecord, index: number): string {
   // Check if user has edited this record
   const edited = editableRecords.value.get(index)
   if (edited) return edited
 
   // IMPORTANT: my_sig_info is the activator's summit, sig_info is the contacted station's summit (S2S)
-  const sigInfo = record.my_sig_info || record.sig_info
+  const sigInfo = getWotaSigInfo(record)
   if (!sigInfo) return ''
 
   // First try to parse as a formatted WOTA reference (e.g., "LDO-093")
@@ -195,13 +202,13 @@ function getFormattedWotaReference(record: AdifRecord, index: number): string {
 function hasSummit(record: AdifRecord): boolean {
   // Only check the ORIGINAL record data, not edited values
   // my_sig_info is the activator's summit, sig_info is the contacted station's summit (S2S)
-  const id = extractWotaId(record.my_sig_info || record.sig_info)
+  const id = extractWotaId(getWotaSigInfo(record))
   return id !== null
 }
 
 function hasOriginalSummit(record: AdifRecord): boolean {
   // my_sig_info is the activator's summit, sig_info is the contacted station's summit (S2S)
-  const id = extractWotaId(record.my_sig_info || record.sig_info)
+  const id = extractWotaId(getWotaSigInfo(record))
   return id !== null
 }
 
@@ -246,6 +253,7 @@ async function handleConfirm() {
       if (props.parsedData!.records[index]) {
         // Add the manually entered WOTA ID to the record
         props.parsedData!.records[index].my_sig_info = wotaId
+        props.parsedData!.records[index].my_sig = 'WOTA'
       }
     })
   }
@@ -451,7 +459,8 @@ function getSummitName(record: AdifRecord, index: number): string {
 
 // Get S2S reference (the contacted station's summit)
 function getS2sReference(record: AdifRecord): string {
-  if (!record.sig_info) return '-'
+  // Only show S2S reference when the SIG field is WOTA
+  if (record.sig?.toUpperCase() !== 'WOTA' || !record.sig_info) return '-'
 
   // Extract wotaId from sig_info (handles both formatted refs and plain numbers)
   const wotaId = extractWotaId(record.sig_info)
@@ -465,7 +474,8 @@ function getS2sReference(record: AdifRecord): string {
 
 // Get S2S summit name
 function getS2sSummitName(record: AdifRecord): string {
-  if (!record.sig_info) return ''
+  // Only show S2S summit name when the SIG field is WOTA
+  if (record.sig?.toUpperCase() !== 'WOTA' || !record.sig_info) return ''
 
   // Extract wotaId from sig_info (handles both formatted refs and plain numbers)
   const wotaId = extractWotaId(record.sig_info)

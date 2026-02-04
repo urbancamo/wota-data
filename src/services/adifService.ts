@@ -124,8 +124,10 @@ export function validateRecord(record: AdifRecord): ValidationResult {
     errors.push('Missing QSO_DATE field')
   }
 
-  // Warn if no WOTA reference
-  if (!record.sig_info && !record.my_sig_info) {
+  // Warn if no WOTA reference - only count SIG_INFO/MY_SIG_INFO when the SIG field is WOTA
+  const hasWotaSig = record.sig?.toUpperCase() === 'WOTA' && record.sig_info
+  const hasWotaMySig = record.my_sig?.toUpperCase() === 'WOTA' && record.my_sig_info
+  if (!hasWotaSig && !hasWotaMySig) {
     errors.push('Missing WOTA reference (SIG_INFO or MY_SIG_INFO)')
   }
 
@@ -176,7 +178,10 @@ export function mapToActivatorLog(record: AdifRecord | undefined): ActivatorLogI
     return null
   }
   // Extract WOTA ID from MY_SIG_INFO (activator's summit), not SIG_INFO (station worked's summit)
-  const wotaId = extractWotaId(record.my_sig_info || record.sig_info)
+  // Only parse references where the SIG field is WOTA to avoid misidentifying POTA etc.
+  const mySigInfo = record.my_sig?.toUpperCase() === 'WOTA' ? record.my_sig_info : undefined
+  const sigInfo = record.sig?.toUpperCase() === 'WOTA' ? record.sig_info : undefined
+  const wotaId = extractWotaId(mySigInfo || sigInfo)
 
   if (!wotaId || !record.call || !record.qso_date) {
     return null
@@ -245,7 +250,11 @@ export function calculateStatistics(
     .sort()
 
   const summitIds = validRecords
-    .map((r) => extractWotaId(r.sig_info || r.my_sig_info))
+    .map((r) => {
+      const sigInfo = r.sig?.toUpperCase() === 'WOTA' ? r.sig_info : undefined
+      const mySigInfo = r.my_sig?.toUpperCase() === 'WOTA' ? r.my_sig_info : undefined
+      return extractWotaId(mySigInfo || sigInfo)
+    })
     .filter((id): id is number => id !== null)
 
   const uniqueSummits = Array.from(new Set(summitIds))
