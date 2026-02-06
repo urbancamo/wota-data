@@ -61,6 +61,25 @@ export interface YearlyActivationStats {
   chaserContacts: number
 }
 
+export interface AwardTier {
+  name: string
+  threshold: number
+  color: string
+}
+
+export interface AwardProgress {
+  name: string
+  code: string
+  worked: number
+  total: number
+  tiers?: AwardTier[]
+}
+
+export interface AwardProgressResponse {
+  type: 'activator' | 'chaser'
+  awards: AwardProgress[]
+}
+
 export interface ActivationContact {
   time: string | null
   stncall: string
@@ -436,6 +455,19 @@ export const apiClient = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch yearly activations')
+    }
+
+    return response.json()
+  },
+
+  async getAwardProgress(type: 'activator' | 'chaser' = 'activator'): Promise<AwardProgressResponse> {
+    const response = await fetch(`${API_BASE_URL}/statistics/user/awards?type=${type}`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch award progress')
     }
 
     return response.json()

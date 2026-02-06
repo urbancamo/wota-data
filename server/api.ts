@@ -1275,6 +1275,132 @@ app.get('/data/api/statistics/user', requireAuth, async (req, res) => {
   }
 })
 
+// Get user award progress
+app.get('/data/api/statistics/user/awards', requireAuth, async (req, res) => {
+  try {
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    const type = (req.query.type as string) === 'chaser' ? 'chaser' : 'activator'
+
+    // Query 1: Book totals (static summit counts per book)
+    const bookTotals = await prisma.$queryRaw<Array<{
+      allWainwrights: bigint
+      eastern: bigint
+      farEastern: bigint
+      central: bigint
+      southern: bigint
+      northern: bigint
+      northWestern: bigint
+      western: bigint
+      outlyingFells: bigint
+    }>>`
+      SELECT
+        COUNT(CASE WHEN wotaid BETWEEN 1 AND 214 THEN 1 END) as allWainwrights,
+        COUNT(CASE WHEN book = 'E' AND wotaid BETWEEN 1 AND 214 THEN 1 END) as eastern,
+        COUNT(CASE WHEN book = 'FE' AND wotaid BETWEEN 1 AND 214 THEN 1 END) as farEastern,
+        COUNT(CASE WHEN book = 'C' AND wotaid BETWEEN 1 AND 214 THEN 1 END) as central,
+        COUNT(CASE WHEN book = 'S' AND wotaid BETWEEN 1 AND 214 THEN 1 END) as southern,
+        COUNT(CASE WHEN book = 'N' AND wotaid BETWEEN 1 AND 214 THEN 1 END) as northern,
+        COUNT(CASE WHEN book = 'NW' AND wotaid BETWEEN 1 AND 214 THEN 1 END) as northWestern,
+        COUNT(CASE WHEN book = 'W' AND wotaid BETWEEN 1 AND 214 THEN 1 END) as western,
+        COUNT(CASE WHEN wotaid > 214 THEN 1 END) as outlyingFells
+      FROM summits
+    `
+
+    const totals = bookTotals[0]
+
+    // Query 2: User progress (distinct wotaid counts)
+    type ProgressRow = {
+      foundation: bigint
+      allWainwrights: bigint
+      eastern: bigint
+      farEastern: bigint
+      central: bigint
+      southern: bigint
+      northern: bigint
+      northWestern: bigint
+      western: bigint
+      outlyingFells: bigint
+      lakeland100: bigint
+    }
+
+    let progress: ProgressRow
+
+    if (type === 'activator') {
+      const rows = await prisma.$queryRaw<ProgressRow[]>`
+        SELECT
+          COUNT(DISTINCT a.wotaid) as foundation,
+          COUNT(DISTINCT CASE WHEN s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as allWainwrights,
+          COUNT(DISTINCT CASE WHEN s.book = 'E' AND s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as eastern,
+          COUNT(DISTINCT CASE WHEN s.book = 'FE' AND s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as farEastern,
+          COUNT(DISTINCT CASE WHEN s.book = 'C' AND s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as central,
+          COUNT(DISTINCT CASE WHEN s.book = 'S' AND s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as southern,
+          COUNT(DISTINCT CASE WHEN s.book = 'N' AND s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as northern,
+          COUNT(DISTINCT CASE WHEN s.book = 'NW' AND s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as northWestern,
+          COUNT(DISTINCT CASE WHEN s.book = 'W' AND s.wotaid BETWEEN 1 AND 214 THEN a.wotaid END) as western,
+          COUNT(DISTINCT CASE WHEN s.wotaid > 214 THEN a.wotaid END) as outlyingFells,
+          COUNT(DISTINCT CASE WHEN s.wotaid BETWEEN 1 AND 100 THEN a.wotaid END) as lakeland100
+        FROM activator_log a
+        JOIN summits s ON a.wotaid = s.wotaid
+        WHERE a.activatedby = ${userCallsign}
+      `
+      progress = rows[0]
+    } else {
+      const rows = await prisma.$queryRaw<ProgressRow[]>`
+        SELECT
+          COUNT(DISTINCT c.wotaid) as foundation,
+          COUNT(DISTINCT CASE WHEN s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as allWainwrights,
+          COUNT(DISTINCT CASE WHEN s.book = 'E' AND s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as eastern,
+          COUNT(DISTINCT CASE WHEN s.book = 'FE' AND s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as farEastern,
+          COUNT(DISTINCT CASE WHEN s.book = 'C' AND s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as central,
+          COUNT(DISTINCT CASE WHEN s.book = 'S' AND s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as southern,
+          COUNT(DISTINCT CASE WHEN s.book = 'N' AND s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as northern,
+          COUNT(DISTINCT CASE WHEN s.book = 'NW' AND s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as northWestern,
+          COUNT(DISTINCT CASE WHEN s.book = 'W' AND s.wotaid BETWEEN 1 AND 214 THEN c.wotaid END) as western,
+          COUNT(DISTINCT CASE WHEN s.wotaid > 214 THEN c.wotaid END) as outlyingFells,
+          COUNT(DISTINCT CASE WHEN s.wotaid BETWEEN 1 AND 100 THEN c.wotaid END) as lakeland100
+        FROM chaser_log c
+        JOIN summits s ON c.wotaid = s.wotaid
+        WHERE c.wkdby = ${userCallsign}
+      `
+      progress = rows[0]
+    }
+
+    const outlyingTotal = Number(totals.outlyingFells)
+
+    const awards = [
+      { name: 'Foundation', code: 'F', worked: Math.min(Number(progress.foundation), 10), total: 10 },
+      { name: 'Eastern Fells', code: 'E', worked: Number(progress.eastern), total: Number(totals.eastern) },
+      { name: 'Far Eastern Fells', code: 'FE', worked: Number(progress.farEastern), total: Number(totals.farEastern) },
+      { name: 'Central Fells', code: 'C', worked: Number(progress.central), total: Number(totals.central) },
+      { name: 'Southern Fells', code: 'S', worked: Number(progress.southern), total: Number(totals.southern) },
+      { name: 'Northern Fells', code: 'N', worked: Number(progress.northern), total: Number(totals.northern) },
+      { name: 'North Western Fells', code: 'NW', worked: Number(progress.northWestern), total: Number(totals.northWestern) },
+      { name: 'Western Fells', code: 'W', worked: Number(progress.western), total: Number(totals.western) },
+      {
+        name: 'Outlying Fells', code: 'OF', worked: Number(progress.outlyingFells), total: outlyingTotal,
+        tiers: [
+          { name: 'B', threshold: Math.round(outlyingTotal * 0.25), color: 'rgba(205,127,50,0.2)' },
+          { name: 'S', threshold: Math.round(outlyingTotal * 0.50), color: 'rgba(192,192,192,0.25)' },
+          { name: 'G', threshold: Math.round(outlyingTotal * 0.75), color: 'rgba(255,215,0,0.2)' },
+          { name: 'P', threshold: outlyingTotal, color: 'rgba(180,180,180,0.2)' },
+        ]
+      },
+      { name: 'Lakeland 100', code: 'L100', worked: Number(progress.lakeland100), total: 100 },
+      { name: 'All Wainwrights', code: 'all', worked: Number(progress.allWainwrights), total: Number(totals.allWainwrights) },
+    ]
+
+    res.json({ type, awards })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching award progress')
+    res.status(500).json({ error: 'Failed to fetch award progress' })
+  }
+})
+
 // Helper function to format WOTA reference
 function formatWotaReference(wotaid: number): string {
   if (wotaid <= 214) {
@@ -1606,7 +1732,7 @@ app.get('/data/api/yearly-activations', requireAuth, async (req, res) => {
       FROM activator_log
       WHERE year >= ${startYear} AND year <= ${currentYear}
       GROUP BY year
-      ORDER BY year ASC
+      ORDER BY year
     `
 
     // Get total chaser contacts per year
@@ -1620,14 +1746,14 @@ app.get('/data/api/yearly-activations', requireAuth, async (req, res) => {
       FROM chaser_log
       WHERE year >= ${startYear} AND year <= ${currentYear}
       GROUP BY year
-      ORDER BY year ASC
+      ORDER BY year
     `
 
     // Fill in any missing years with 0
     const result: Array<{ year: number; uniqueFells: number; activatorContacts: number; chaserContacts: number }> = []
     for (let y = startYear; y <= currentYear; y++) {
-      const activator = activatorStats.find(t => t.year === y)
-      const chaser = chaserStats.find(t => t.year === y)
+      const activator = activatorStats.find((t: { year: number }) => t.year === y)
+      const chaser = chaserStats.find((t: { year: number }) => t.year === y)
       result.push({
         year: y,
         uniqueFells: activator ? Number(activator.uniqueFells) : 0,
