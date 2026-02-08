@@ -66,7 +66,7 @@ export function formatSpot(spot: SpotWithSummit): string {
   // Build comment field: "WOTA: LDW-123 <comment>"
   const ref = formatWotaReference(spot.wotaid)
   const prefix = `[WOTA] ${ref} `
-  const comment = spot.comment?.trim() ?? ''
+  const comment = (spot.comment?.trim() ?? '').replace('[SOTA>WOTA]', '').trim()
   const maxCommentLen = 30 - prefix.length
   const truncatedComment = comment.substring(0, maxCommentLen)
   const summitInfo = (prefix + truncatedComment).padEnd(31)
