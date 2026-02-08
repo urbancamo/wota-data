@@ -96,6 +96,27 @@ export class SpotCache {
   }
 
   /**
+   * Remove spots from cache that aren't from the current UTC day
+   */
+  private pruneStaleSpots(): void {
+    if (this.spots.length === 0) return
+
+    const now = new Date()
+    const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+
+    const beforeCount = this.spots.length
+    this.spots = this.spots.filter(s => {
+      const spotDay = Date.UTC(s.datetime.getUTCFullYear(), s.datetime.getUTCMonth(), s.datetime.getUTCDate())
+      return spotDay === todayUTC
+    })
+    const prunedCount = beforeCount - this.spots.length
+
+    if (prunedCount > 0) {
+      logger.info({ prunedCount }, 'Removed stale spots from cache')
+    }
+  }
+
+  /**
    * Remove spots from cache that have been deleted from the database
    */
   private async pruneDeletedSpots(): Promise<void> {
@@ -165,6 +186,9 @@ export class SpotCache {
           'Added new spots to cache'
         )
       }
+
+      // Remove spots from previous days
+      this.pruneStaleSpots()
 
       // Check for deleted spots and remove them from cache (non-blocking)
       try {
