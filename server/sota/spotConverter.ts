@@ -12,9 +12,9 @@ export function filterLakeDistrictSpots(
   sotaToWotaMap: Map<number, number>
 ): SotaSpot[] {
   return spots.filter((spot) => {
-    if (spot.AssociationCode !== 'G') return false
-    if (!spot.SummitCode.startsWith('LD-')) return false
-    const sotaNumber = parseSotaNumber(spot.SummitCode)
+    if (spot.associationCode !== 'G') return false
+    if (!spot.summitCode.startsWith('LD-')) return false
+    const sotaNumber = parseSotaNumber(spot.summitCode)
     return sotaToWotaMap.has(sotaNumber)
   })
 }
@@ -42,16 +42,16 @@ export function convertSotaToWotaSpot(
   spot: SotaSpot,
   sotaToWotaMap: Map<number, number>
 ): WotaSpotInsert {
-  const sotaNumber = parseSotaNumber(spot.SummitCode)
+  const sotaNumber = parseSotaNumber(spot.summitCode)
   const wotaid = sotaToWotaMap.get(sotaNumber)!
 
   return {
-    datetime: convertTimestamp(spot.Timestamp),
-    call: spot.ActivatorCallsign,
+    datetime: convertTimestamp(spot.timeStamp),
+    call: spot.activatorCallsign,
     wotaid,
-    freqmode: spot.Frequency + '-' + spot.Mode,
-    comment: buildComment(spot.Comments),
-    spotter: spot.Callsign,
+    freqmode: spot.frequency + '-' + spot.mode,
+    comment: buildComment(spot.comments),
+    spotter: spot.callsign,
   }
 }
 

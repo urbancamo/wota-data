@@ -19,7 +19,7 @@ export async function fetchSotaSpots(): Promise<SotaSpot[]> {
     const spots = (await response.json()) as SotaSpot[]
     for (const spot of spots) {
       logger.debug(
-        { id: spot.Id, call: spot.ActivatorCallsign, assoc: spot.AssociationCode, summit: spot.SummitCode, freq: spot.Frequency, mode: spot.Mode, time: spot.Timestamp, comments: spot.Comments },
+        { id: spot.id, call: spot.activatorCallsign, assoc: spot.associationCode, summit: spot.summitCode, freq: spot.frequency, mode: spot.mode, time: spot.timeStamp, comments: spot.comments },
         'SOTA spot from API'
       )
     }

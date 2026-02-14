@@ -11,18 +11,18 @@ import type { SotaSpot } from '../server/sota/types'
 
 function makeSotaSpot(overrides: Partial<SotaSpot> = {}): SotaSpot {
   return {
-    Id: 12345,
-    Timestamp: '2019-05-21T19:06:59.999',
-    Comments: 'TEST PLEASE IGNORE',
-    Callsign: 'G1OHH',
-    AssociationCode: 'G',
-    SummitCode: 'LD-056',
-    ActivatorCallsign: 'M0NOM/P',
-    ActivatorName: 'Mark',
-    Frequency: '14.285',
-    Mode: 'ssb',
-    SummitDetails: '',
-    HighlightColor: '',
+    id: 12345,
+    timeStamp: '2019-05-21T19:06:59.999',
+    comments: 'TEST PLEASE IGNORE',
+    callsign: 'G1OHH',
+    associationCode: 'G',
+    summitCode: 'LD-056',
+    activatorCallsign: 'M0NOM/P',
+    activatorName: 'Mark',
+    frequency: '14.285',
+    mode: 'ssb',
+    summitDetails: '',
+    highlightColor: '',
     ...overrides,
   }
 }
@@ -86,32 +86,32 @@ describe('SOTA Spot Service - spotConverter', () => {
     })
 
     it('should reject non-G association spots', () => {
-      const spots = [makeSotaSpot({ AssociationCode: 'HB' })]
+      const spots = [makeSotaSpot({ associationCode: 'HB' })]
       expect(filterLakeDistrictSpots(spots, sotaToWotaMap)).toHaveLength(0)
     })
 
     it('should reject non-LD region spots', () => {
-      const spots = [makeSotaSpot({ SummitCode: 'NP-001' })]
+      const spots = [makeSotaSpot({ summitCode: 'NP-001' })]
       expect(filterLakeDistrictSpots(spots, sotaToWotaMap)).toHaveLength(0)
     })
 
     it('should reject LD spots without a WOTA mapping', () => {
-      const spots = [makeSotaSpot({ SummitCode: 'LD-999' })]
+      const spots = [makeSotaSpot({ summitCode: 'LD-999' })]
       expect(filterLakeDistrictSpots(spots, sotaToWotaMap)).toHaveLength(0)
     })
 
     it('should filter a mixed batch correctly', () => {
       const spots = [
-        makeSotaSpot({ Id: 1, AssociationCode: 'G', SummitCode: 'LD-056' }),
-        makeSotaSpot({ Id: 2, AssociationCode: 'HB', SummitCode: 'LD-056' }),
-        makeSotaSpot({ Id: 3, AssociationCode: 'G', SummitCode: 'NP-001' }),
-        makeSotaSpot({ Id: 4, AssociationCode: 'G', SummitCode: 'LD-001' }),
-        makeSotaSpot({ Id: 5, AssociationCode: 'G', SummitCode: 'LD-999' }),
+        makeSotaSpot({ id: 1, associationCode: 'G', summitCode: 'LD-056' }),
+        makeSotaSpot({ id: 2, associationCode: 'HB', summitCode: 'LD-056' }),
+        makeSotaSpot({ id: 3, associationCode: 'G', summitCode: 'NP-001' }),
+        makeSotaSpot({ id: 4, associationCode: 'G', summitCode: 'LD-001' }),
+        makeSotaSpot({ id: 5, associationCode: 'G', summitCode: 'LD-999' }),
       ]
       const result = filterLakeDistrictSpots(spots, sotaToWotaMap)
       expect(result).toHaveLength(2)
-      expect(result[0].Id).toBe(1)
-      expect(result[1].Id).toBe(4)
+      expect(result[0].id).toBe(1)
+      expect(result[1].id).toBe(4)
     })
   })
 

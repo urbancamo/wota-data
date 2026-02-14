@@ -1,17 +1,17 @@
 // Mirrors the SOTA API JSON response from http://api2.sota.org.uk/api/spots/1
 export interface SotaSpot {
-  Id: number
-  Timestamp: string
-  Comments: string
-  Callsign: string
-  AssociationCode: string
-  SummitCode: string
-  ActivatorCallsign: string
-  ActivatorName: string
-  Frequency: string
-  Mode: string
-  SummitDetails: string
-  HighlightColor: string
+  id: number
+  timeStamp: string
+  comments: string
+  callsign: string
+  associationCode: string
+  summitCode: string
+  activatorCallsign: string
+  activatorName: string
+  frequency: string
+  mode: string
+  summitDetails: string
+  highlightColor: string | null
 }
 
 // Fields we INSERT into the spots table (no id - MySQL auto-generates it)

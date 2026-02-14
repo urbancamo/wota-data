@@ -60,7 +60,7 @@ export class SotaSpotService {
       const wotaSpots = convertSotaToWotaSpots(ldSpots, this.sotaToWotaMap)
 
       // Build set of current SOTA spot IDs (only LD ones we care about)
-      const currentSotaIds = new Set(ldSpots.map((s) => s.Id))
+      const currentSotaIds = new Set(ldSpots.map((s) => s.id))
 
       // Insert new spots
       let insertedCount = 0
@@ -71,21 +71,21 @@ export class SotaSpotService {
         const wotaSpot = wotaSpots[i]
 
         // Skip if already tracked from a previous poll
-        if (this.tracker.isTracked(sotaSpot.Id)) {
+        if (this.tracker.isTracked(sotaSpot.id)) {
           skippedTracked++
           continue
         }
 
         try {
           const wasInserted = await this.insertSpot(wotaSpot)
-          this.tracker.track(sotaSpot.Id, wotaSpot.datetime, wotaSpot.call, wotaSpot.wotaid)
+          this.tracker.track(sotaSpot.id, wotaSpot.datetime, wotaSpot.call, wotaSpot.wotaid)
           if (wasInserted) {
             insertedCount++
           } else {
             skippedDuplicate++
           }
         } catch (error) {
-          logger.error({ error, sotaSpotId: sotaSpot.Id }, 'Failed to insert SOTA->WOTA spot')
+          logger.error({ error, sotaSpotId: sotaSpot.id }, 'Failed to insert SOTA->WOTA spot')
         }
       }
 
