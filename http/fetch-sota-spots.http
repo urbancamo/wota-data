@@ -1,0 +1,3 @@
+### GET request with a header
+GET https://api2.sota.org.uk/api/spots/1
+Accept: application/json

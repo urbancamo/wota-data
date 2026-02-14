@@ -1,7 +1,7 @@
 import {logger} from '../logger'
 import type {SotaSpot} from './types'
 
-const SOTA_API_URL = 'http://api2.sota.org.uk/api/spots/1'
+const SOTA_API_URL = 'https://api2.sota.org.uk/api/spots/1'
 const TIMEOUT_MS = 15_000
 
 export async function fetchSotaSpots(): Promise<SotaSpot[]> {
