@@ -17,6 +17,7 @@ import { loggingMiddleware } from './middleware/loggingMiddleware'
 import { stripPortableSuffix } from '../shared/utils'
 import { PrismaClient } from "@prisma/client";
 import { ClusterServer } from './cluster'
+import { SotaSpotService } from './sota'
 
 // Type definitions
 type ActivatorLogExport = {
@@ -775,7 +776,8 @@ app.get('/data/api/summits/geojson', async (req, res) => {
   try {
     const response = await fetch('https://www.wota.org.uk/mapping/data/summits.json')
     if (!response.ok) {
-      throw new Error(`Failed to fetch GeoJSON: ${response.status}`)
+      logger.error({ status: response.status, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching summits GeoJSON')
+      return res.status(502).json({ error: 'Failed to fetch summits GeoJSON' })
     }
     const geojson = await response.json()
     res.json(geojson)
@@ -1910,6 +1912,9 @@ app.get('/data/api/admin/logs', requireAuth, async (req, res) => {
 const CLUSTER_PORT = parseInt(process.env.CLUSTER_PORT || '7300', 10)
 const clusterServer = new ClusterServer(CLUSTER_PORT)
 
+// SOTA spot pull-through service
+const sotaSpotService = new SotaSpotService()
+
 const server = app.listen(PORT, async () => {
   logger.info({ port: PORT }, `API server running on http://localhost:${PORT}`)
 
@@ -1918,6 +1923,15 @@ const server = app.listen(PORT, async () => {
     await clusterServer.start()
   } catch (error) {
     logger.error({ error }, 'Failed to start cluster server')
+  }
+
+  // Start SOTA spot pull-through service
+  if (!STUB_DB) {
+    try {
+      await sotaSpotService.start()
+    } catch (error) {
+      logger.error({ error }, 'Failed to start SOTA spot service')
+    }
   }
 })
 
@@ -1936,6 +1950,7 @@ async function shutdown(signal: string) {
   logger.info({ signal }, 'Shutdown initiated')
 
   try {
+    sotaSpotService.stop()
     await clusterServer.stop()
 
     await new Promise<void>((resolve) => {
