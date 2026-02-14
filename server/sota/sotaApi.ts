@@ -16,7 +16,14 @@ export async function fetchSotaSpots(): Promise<SotaSpot[]> {
       return []
     }
 
-    return (await response.json()) as SotaSpot[]
+    const spots = (await response.json()) as SotaSpot[]
+    for (const spot of spots) {
+      logger.debug(
+        { id: spot.Id, call: spot.ActivatorCallsign, assoc: spot.AssociationCode, summit: spot.SummitCode, freq: spot.Frequency, mode: spot.Mode, time: spot.Timestamp, comments: spot.Comments },
+        'SOTA spot from API'
+      )
+    }
+    return spots
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       logger.warn('SOTA API request timed out')
