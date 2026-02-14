@@ -1,0 +1,127 @@
+SOTA Spot Pull-Through Implementation Plan
+
+Context
+
+The WOTA programme needs SOTA spots that correspond to Lake District summits to be automatically pulled into the WOTA spots table. This is currently handled by a legacy Go CGI script
+(/Users/msw/code/wota/sotaspots/getspots.go) triggered by an external cron job every minute. We're replacing it with a TypeScript service integrated into the wota-data application, with an
+enhancement to also detect and remove WOTA spots when the original SOTA spot is deleted.
+
+Approach
+
+Create a server/sota/ module (mirroring the existing server/cluster/ pattern) containing a self-contained polling service. Use setInterval at 60-second intervals (matching the existing SpotPoller
+pattern). Use raw SQL for inserts (to avoid the Prisma Spot.id autoincrement issue). Load the SOTA-to-WOTA summit mapping from the summits table at startup. Track SOTA spot IDs in memory to
+detect deletions.
+
+Files to Create
+
+1. server/sota/types.ts - TypeScript interfaces
+
+- SotaSpot - mirrors the SOTA API JSON response (Id, Timestamp, Comments, Callsign, AssociationCode, SummitCode, ActivatorCallsign, Frequency, Mode, etc.)
+- WotaSpotInsert - the fields we INSERT into the spots table (no id - MySQL auto-generates it)
+- TrackedSpot - associates a SOTA spot ID with the WOTA spot composite key (datetime, call, wotaid)
+
+2. server/sota/sotaApi.ts - SOTA API HTTP client
+
+- fetchSotaSpots(): fetches from http://api2.sota.org.uk/api/spots/1 using native fetch
+- 15-second timeout via AbortController
+- Returns SotaSpot[] on success, empty array on any failure (graceful degradation)
+- Uses the existing logger for warnings/errors
+
+3. server/sota/spotConverter.ts - Pure conversion functions
+
+- filterLakeDistrictSpots(spots, sotaToWotaMap): keeps only spots where AssociationCode === "G", SummitCode starts with "LD-", and the SOTA number exists in the map
+- convertTimestamp(sotaTimestamp): "2019-05-21T19:06:59.999" -> "2019-05-21 19:06:59" (replace T with space, strip milliseconds)
+- buildComment(comments): truncate to 79 chars; prepend "[SOTA>WOTA] " only if comments.length < 67 (matches Go code's < comparison exactly)
+- convertSotaToWotaSpot(spot, map) / convertSotaToWotaSpots(spots, map): full field mapping
+- parseSotaNumber(summitCode): "LD-056" -> 56
+
+4. server/sota/spotTracker.ts - In-memory deletion tracker
+
+- SotaSpotTracker class with a Map<number, TrackedSpot> (sotaSpotId -> tracking info)
+- track(sotaSpotId, datetime, call, wotaid): record that we've seen/inserted a WOTA spot for this SOTA spot
+- findDeletedSpots(currentSotaSpotIds): returns TrackedSpots whose SOTA IDs are no longer in the API response, and removes them from tracking
+- isTracked(sotaSpotId): check if already tracked (skip re-processing)
+- Bounded naturally - old entries get cleaned up when SOTA spots rotate out of the API response
+
+5. server/sota/index.ts - SotaSpotService orchestrator
+
+- loadSummitMapping(): queries prisma.summit.findMany({ where: { sotaid: { not: null } } }) to build Map<number, number> (sotaid -> wotaid) at startup
+- start(): loads mapping, runs first poll immediately, then starts 60-second setInterval
+- stop(): clears the interval
+- poll(): single cycle - fetch -> filter -> convert -> insert new -> detect & delete removed
+    - isPolling guard prevents overlapping polls
+    - Duplicate check: prisma.spot.findFirst({ where: { datetime, call, wotaid } })
+    - Insert: prisma.$executeRaw (raw SQL INSERT without id, letting MySQL auto-increment)
+    - Delete: prisma.$executeRaw DELETE by datetime + call + wotaid composite key
+    - Each insert/delete is individually try-caught so one failure doesn't abort the batch
+
+6. tests/sota-spot-service.test.ts - Tests
+
+- spotConverter: convertTimestamp, buildComment (short/long/exact boundary), parseSotaNumber, filterLakeDistrictSpots (mix of associations/regions), convertSotaToWotaSpot
+- spotTracker: track/isTracked, findDeletedSpots (returns removed IDs, cleans them up), all-present returns empty, all-gone returns all
+
+Files to Modify
+
+7. server/api.ts (~lines 1909-1958)
+
+- Import SotaSpotService from './sota'
+- Instantiate: const sotaSpotService = new SotaSpotService()
+- Start inside app.listen callback (after clusterServer.start()), guarded by if (!STUB_DB)
+- Stop in shutdown() function (before clusterServer.stop())
+
+Key Design Decisions
+┌─────────────────────┬───────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│      Decision       │                Choice                 │                                                             Rationale                                                             │
+├─────────────────────┼───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Scheduling          │ setInterval (60s)                     │ Matches existing SpotPoller pattern, no new dependencies                                                                          │
+├─────────────────────┼───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ID generation       │ Raw SQL via $executeRaw               │ Prisma schema lacks @default(autoincrement()) on Spot.id; Go code relies on MySQL auto-increment; raw SQL matches existing        │
+│                     │                                       │ behavior                                                                                                                          │
+├─────────────────────┼───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ SOTA-to-WOTA        │ Load from summits.sotaid at startup   │ Database is the source of truth (not the hardcoded Go JSON map); query once, cache in memory                                      │
+│ mapping             │                                       │                                                                                                                                   │
+├─────────────────────┼───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Deletion detection  │ In-memory Map<sotaSpotId,             │ No schema changes needed; bounded naturally; minor edge case on restart (map starts empty)                                        │
+│                     │ TrackedSpot>                          │                                                                                                                                   │
+├─────────────────────┼───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Stub mode           │ Don't start service in --stub-db mode │ SOTA service writes to real DB; shouldn't run in dry-run mode                                                                     │
+└─────────────────────┴───────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+Integration Notes
+
+- New spots inserted by this service will be automatically picked up by the existing SpotCache.pollForNewSpots() within 5 seconds (it queries id > lastSpotId) and broadcast to cluster clients. No
+  changes to cluster code needed.
+- Deleted spots will be automatically pruned from the SpotCache by its existing pruneDeletedSpots() method.
+- The spotFormatter.ts already strips [SOTA>WOTA] from comments when formatting for DX cluster output.
+
+Verification
+
+1. Run tests: npm test
+2. Start the server: npm run api and check logs for:
+- "Loaded SOTA-to-WOTA summit mapping" with a count (~60 entries based on the Go code's JSON map which matches the DB)
+- "SOTA spot service started" with intervalMs: 60000
+- On each poll cycle, either "Inserted SOTA->WOTA spots" or debug-level duplicate skip messages
+3. Check the spots table for entries with [SOTA>WOTA] in the comment field
+4. Verify the existing spotter/cluster functionality continues to work (spots appear in the DX cluster output)
+   ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+
+  Here's a summary of everything implemented:
+
+  Files Created
+
+  1. server/sota/types.ts - TypeScript interfaces: SotaSpot, WotaSpotInsert, TrackedSpot
+  2. server/sota/sotaApi.ts - HTTP client that fetches from the SOTA API with 15s timeout and graceful degradation
+  3. server/sota/spotConverter.ts - Pure functions: filterLakeDistrictSpots, convertTimestamp, buildComment, parseSotaNumber, convertSotaToWotaSpot/Spots
+  4. server/sota/spotTracker.ts - SotaSpotTracker class with in-memory Map for deletion detection
+  5. server/sota/index.ts - SotaSpotService orchestrator: loads summit mapping from DB, polls every 60s, inserts new spots via raw SQL, detects and deletes removed spots
+  6. tests/sota-spot-service.test.ts - 18 tests covering spotConverter and spotTracker
+
+  Files Modified
+
+  7. server/api.ts - Imported SotaSpotService, instantiated it, starts after cluster server (guarded by !STUB_DB), stops in shutdown before cluster server
+
+  Test Results
+
+  - 18/18 new tests pass
+  - 140/141 total tests pass (1 pre-existing failure in cluster.test.ts unrelated to this change)
+
