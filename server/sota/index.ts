@@ -50,7 +50,10 @@ export class SotaSpotService {
 
     try {
       const sotaSpots = await fetchSotaSpots()
-      if (sotaSpots.length === 0) return
+      if (sotaSpots.length === 0) {
+        logger.info({ sotaSpots: 0 }, 'SOTA spot poll: no spots returned from API')
+        return
+      }
 
       // Filter to Lake District spots with WOTA mapping
       const ldSpots = filterLakeDistrictSpots(sotaSpots, this.sotaToWotaMap)
@@ -61,24 +64,29 @@ export class SotaSpotService {
 
       // Insert new spots
       let insertedCount = 0
+      let skippedTracked = 0
+      let skippedDuplicate = 0
       for (let i = 0; i < ldSpots.length; i++) {
         const sotaSpot = ldSpots[i]
         const wotaSpot = wotaSpots[i]
 
         // Skip if already tracked from a previous poll
-        if (this.tracker.isTracked(sotaSpot.Id)) continue
+        if (this.tracker.isTracked(sotaSpot.Id)) {
+          skippedTracked++
+          continue
+        }
 
         try {
-          await this.insertSpot(wotaSpot)
+          const wasInserted = await this.insertSpot(wotaSpot)
           this.tracker.track(sotaSpot.Id, wotaSpot.datetime, wotaSpot.call, wotaSpot.wotaid)
-          insertedCount++
+          if (wasInserted) {
+            insertedCount++
+          } else {
+            skippedDuplicate++
+          }
         } catch (error) {
           logger.error({ error, sotaSpotId: sotaSpot.Id }, 'Failed to insert SOTA->WOTA spot')
         }
-      }
-
-      if (insertedCount > 0) {
-        logger.info({ count: insertedCount }, 'Inserted SOTA->WOTA spots')
       }
 
       // Detect and delete removed spots
@@ -97,9 +105,10 @@ export class SotaSpotService {
         }
       }
 
-      if (deletedCount > 0) {
-        logger.info({ count: deletedCount }, 'Deleted removed SOTA->WOTA spots')
-      }
+      logger.info(
+        { sotaSpots: sotaSpots.length, ldSpots: ldSpots.length, inserted: insertedCount, skippedDuplicate, skippedTracked, deleted: deletedCount },
+        'SOTA spot poll complete'
+      )
     } catch (error) {
       logger.error({ error }, 'SOTA spot poll cycle failed')
     } finally {
@@ -107,7 +116,7 @@ export class SotaSpotService {
     }
   }
 
-  private async insertSpot(spot: WotaSpotInsert): Promise<void> {
+  private async insertSpot(spot: WotaSpotInsert): Promise<boolean> {
     // Check for duplicate
     const existing = await prisma.spot.findFirst({
       where: {
@@ -117,17 +126,12 @@ export class SotaSpotService {
       },
     })
 
-    if (existing) {
-      logger.debug(
-        { datetime: spot.datetime, call: spot.call, wotaid: spot.wotaid },
-        'SOTA->WOTA spot already exists, skipping'
-      )
-      return
-    }
+    if (existing) return false
 
     // Raw SQL insert - lets MySQL auto-increment the id
     await prisma.$executeRaw`
       INSERT INTO spots (datetime, \`call\`, wotaid, freqmode, comment, spotter)
       VALUES (${spot.datetime}, ${spot.call}, ${spot.wotaid}, ${spot.freqmode}, ${spot.comment}, ${spot.spotter})`
+    return true
   }
 }
