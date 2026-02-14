@@ -402,8 +402,9 @@ async function handleChaserImportConfirm(validRecords: ChaserImportRecord[]) {
 
     const result = await response.json()
 
-    // Close modal
+    // Close modal and loading toast before showing result dialog
     showChaserPreview.value = false
+    closeToast()
 
     // Show success dialog
     await showDialog({
