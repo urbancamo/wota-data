@@ -325,9 +325,15 @@ export async function parseChaserAdifFile(file: File): Promise<ChaserImportResul
           let wotaRef = ''
           let sotaRef: string | undefined
 
-          // Validate SIG field - accept both WOTA and SOTA
+          // Validate SIG field - accept both WOTA and SOTA, or fall back to SOTA_REF
           if (!sig) {
-            validationErrors.push('SIG field is missing')
+            // No SIG field - check for SOTA_REF as fallback
+            if (adifRecord.sota_ref) {
+              sotaRef = adifRecord.sota_ref.trim()
+              wotaRef = sotaRef
+            } else {
+              validationErrors.push('SIG field or SOTA_REF is missing')
+            }
           } else {
             const sigUpper = sig.toUpperCase()
             if (sigUpper === 'WOTA') {
@@ -342,8 +348,8 @@ export async function parseChaserAdifFile(file: File): Promise<ChaserImportResul
           }
 
           // Validate required fields
-          if (!sigInfo) {
-            validationErrors.push('SIG_INFO (WOTA/SOTA reference) is required')
+          if (!sigInfo && !sotaRef) {
+            validationErrors.push('SIG_INFO (WOTA/SOTA reference) or SOTA_REF is required')
           }
 
           if (!ucall) {
