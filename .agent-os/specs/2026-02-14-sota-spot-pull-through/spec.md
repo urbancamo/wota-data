@@ -50,3 +50,6 @@ from a SOTA spot, if the original SOTA spot is deleted. The current GoLang imple
 
 I will create a branch for this functionality. Once the plan in written and agreed implement the existing functionality,
 with the specified enhancements.
+
+## Previous Cron Job
+`* 	* 	* 	* 	* 	~/public_html/cgi-bin/getspots > ~/logs/getspots.log 2>&1`
