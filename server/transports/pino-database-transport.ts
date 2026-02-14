@@ -69,7 +69,7 @@ function extractLogData(log: any) {
     hostname: hostname || os.hostname(),
     pid: pid || process.pid,
     request_id: requestId || null,
-    user_id: userId || null,
+    user_id: userId != null ? String(userId) : null,
     username: username || null,
     path: path || null,
     method: method || null,
