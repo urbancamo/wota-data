@@ -134,7 +134,7 @@ function formatDate(adifDate?: string): string {
   const year = adifDate.substring(0, 4)
   const month = adifDate.substring(4, 6)
   const day = adifDate.substring(6, 8)
-  return `${year}-${month}-${day}`
+  return `${day}/${month}/${year}`
 }
 
 function formatTime(adifTime?: string): string {

@@ -158,10 +158,7 @@ watch(() => props.contactType, () => {
 
 function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 function formatTime(time: Date | string | null): string {
@@ -365,7 +362,7 @@ defineExpose({
   align-items: center;
 }
 
-.admin-search-controls .van-field {
+.admin-search-controls {
   flex: 1;
   max-width: 300px;
 }
@@ -506,8 +503,7 @@ defineExpose({
 }
 
 /* Fix pagination Previous/Next button width */
-.pagination-controls :deep(.van-pagination__item--prev),
-.pagination-controls :deep(.van-pagination__item--next) {
+.pagination-controls :deep {
   min-width: 70px;
   padding: 0 8px;
 }
@@ -529,7 +525,7 @@ defineExpose({
     flex-wrap: wrap;
   }
 
-  .admin-search-controls .van-field {
+  .admin-search-controls {
     max-width: none;
     width: 100%;
   }

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { showNotify } from 'vant'
-import { apiClient, type ActivationContact } from '../services/api'
-import type { DatabaseStatistics } from '../types/adif'
-import { formatWotaReference } from '../utils/wotaReference'
+import {onMounted, ref} from 'vue'
+import {showNotify} from 'vant'
+import {type ActivationContact, apiClient} from '../services/api'
+import type {DatabaseStatistics} from '../types/adif'
+import {formatWotaReference} from '../utils/wotaReference'
 
 const statistics = ref<DatabaseStatistics | null>(null)
 const loading = ref(true)
@@ -43,12 +43,11 @@ async function openActivationDetails(activation: { wotaid: number; name: string;
   activationContacts.value = []
 
   try {
-    const contacts = await apiClient.getActivationContacts(
+    activationContacts.value = await apiClient.getActivationContacts(
       activation.wotaid,
       activation.callsign,
       activation.date
     )
-    activationContacts.value = contacts
   } catch (error) {
     console.error('Error fetching activation contacts:', error)
     showNotify({
@@ -73,7 +72,7 @@ onMounted(() => {
 function formatDate(dateString: string | null): string {
   if (!dateString) return 'N/A'
   const date = new Date(dateString)
-  return date.toLocaleDateString()
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 async function copyAsMarkdown() {
