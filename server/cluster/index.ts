@@ -2,6 +2,7 @@ import net from 'net'
 import type { ClusterClient } from './types'
 import {
   createClient,
+  sendToClient,
   sendWelcome,
   sendPrompt,
   authenticateClient,
