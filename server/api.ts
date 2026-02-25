@@ -781,23 +781,29 @@ app.delete('/data/api/spots/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid spot ID' })
     }
 
-    const spot = await prisma.spot.findUnique({ where: { id } })
-    if (!spot) {
-      return res.status(404).json({ error: 'Spot not found' })
-    }
-
     // Check ownership: user's callsign must match spotter, or user must be admin
     const userCallsign = req.session.username?.toUpperCase()
     const isAdmin = req.session.isAdmin || false
-    if (!isAdmin && spot.spotter.trim().toUpperCase() !== userCallsign) {
-      return res.status(403).json({ error: 'You can only delete your own spots' })
+
+    if (!isAdmin) {
+      const spot = await prisma.spot.findUnique({ where: { id }, select: { spotter: true } })
+      if (!spot) {
+        return res.status(404).json({ error: 'Spot not found' })
+      }
+      if (spot.spotter.trim().toUpperCase() !== userCallsign) {
+        return res.status(403).json({ error: 'You can only delete your own spots' })
+      }
     }
 
-    await prisma.spot.delete({ where: { id } })
+    const result = await prisma.$executeRaw`DELETE FROM spots WHERE id = ${id}`
+    if (result === 0) {
+      return res.status(404).json({ error: 'Spot not found' })
+    }
+
     logger.info({ spotId: id, username: req.session.username }, 'Spot deleted')
     res.json({ message: 'Spot deleted successfully' })
-  } catch (error) {
-    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error deleting spot')
+  } catch (error: any) {
+    logger.error({ error: error?.message || error, path: req.path, method: req.method, username: req.session?.username }, 'Error deleting spot')
     res.status(500).json({ error: 'Failed to delete spot' })
   }
 })
@@ -999,23 +1005,29 @@ app.delete('/data/api/alerts/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid alert ID' })
     }
 
-    const alert = await prisma.alert.findUnique({ where: { id } })
-    if (!alert) {
-      return res.status(404).json({ error: 'Alert not found' })
-    }
-
     // Check ownership: user's callsign must match postedby, or user must be admin
     const userCallsign = req.session.username?.toUpperCase()
     const isAdmin = req.session.isAdmin || false
-    if (!isAdmin && alert.postedby.trim().toUpperCase() !== userCallsign) {
-      return res.status(403).json({ error: 'You can only delete your own alerts' })
+
+    if (!isAdmin) {
+      const alert = await prisma.alert.findUnique({ where: { id }, select: { postedby: true } })
+      if (!alert) {
+        return res.status(404).json({ error: 'Alert not found' })
+      }
+      if (alert.postedby.trim().toUpperCase() !== userCallsign) {
+        return res.status(403).json({ error: 'You can only delete your own alerts' })
+      }
     }
 
-    await prisma.alert.delete({ where: { id } })
+    const result = await prisma.$executeRaw`DELETE FROM alerts WHERE id = ${id}`
+    if (result === 0) {
+      return res.status(404).json({ error: 'Alert not found' })
+    }
+
     logger.info({ alertId: id, username: req.session.username }, 'Alert deleted')
     res.json({ message: 'Alert deleted successfully' })
-  } catch (error) {
-    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error deleting alert')
+  } catch (error: any) {
+    logger.error({ error: error?.message || error, path: req.path, method: req.method, username: req.session?.username }, 'Error deleting alert')
     res.status(500).json({ error: 'Failed to delete alert' })
   }
 })
