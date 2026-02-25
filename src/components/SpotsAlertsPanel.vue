@@ -144,11 +144,6 @@ onUnmounted(() => {
 
 <template>
   <div class="spots-alerts-panel">
-    <div class="panel-header">
-      <h3 class="panel-title">Spots &amp; Alerts</h3>
-      <span class="refresh-countdown">Refresh in {{ countdown }}s</span>
-    </div>
-
     <div class="columns">
       <!-- Alerts Column (Left) -->
       <div class="column">
@@ -298,25 +293,6 @@ onUnmounted(() => {
 <style scoped>
 .spots-alerts-panel {
   padding: 16px;
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.panel-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #323233;
-}
-
-.refresh-countdown {
-  font-size: 12px;
-  color: #969799;
 }
 
 .columns {
