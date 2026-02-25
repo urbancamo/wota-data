@@ -127,6 +127,11 @@ export interface AlertWithSummit {
   sotaid: number | null
 }
 
+export interface MwisForecast {
+  summary: string
+  fetchedAt: string
+}
+
 export interface ChaserImportRecord {
   ucall: string
   stncall: string

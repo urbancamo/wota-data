@@ -18,6 +18,7 @@ import { stripPortableSuffix } from '../shared/utils'
 import { PrismaClient } from "@prisma/client";
 import { ClusterServer } from './cluster'
 import { SotaSpotService } from './sota'
+import { fetchMwisForecast } from './mwis/mwisService'
 
 // Type definitions
 type ActivatorLogExport = {
@@ -78,6 +79,20 @@ app.use(loggingMiddleware(logger))
 // Health check endpoint
 app.get('/data/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+// MWIS weather forecast endpoint
+app.get('/data/api/mwis', async (req, res) => {
+  try {
+    const forecast = await fetchMwisForecast()
+    if (!forecast) {
+      return res.status(503).json({ error: 'Weather forecast temporarily unavailable' })
+    }
+    res.json(forecast)
+  } catch (error) {
+    logger.error({ error }, 'Error fetching MWIS forecast')
+    res.status(500).json({ error: 'Failed to fetch weather forecast' })
+  }
 })
 
 // Authentication endpoints

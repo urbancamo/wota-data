@@ -23,6 +23,7 @@ declare module 'vue' {
     LoginForm: typeof import('./src/components/LoginForm.vue')['default']
     LogoutButton: typeof import('./src/components/LogoutButton.vue')['default']
     LogsView: typeof import('./src/components/LogsView.vue')['default']
+    MwisTicker: typeof import('./src/components/MwisTicker.vue')['default']
     RecentActivationsPanel: typeof import('./src/components/RecentActivationsPanel.vue')['default']
     SpotsAlertsPanel: typeof import('./src/components/SpotsAlertsPanel.vue')['default']
     StatisticsPanel: typeof import('./src/components/StatisticsPanel.vue')['default']

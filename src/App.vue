@@ -6,6 +6,7 @@ import LogoutButton from './components/LogoutButton.vue'
 import ButtonBar from './components/ButtonBar.vue'
 import AdifPreviewModal from './components/AdifPreviewModal.vue'
 import ExportFilterDialog from './components/ExportFilterDialog.vue'
+import MwisTicker from './components/MwisTicker.vue'
 import SpotsAlertsPanel from './components/SpotsAlertsPanel.vue'
 import RecentActivationsPanel from './components/RecentActivationsPanel.vue'
 import AwardProgressPanel from './components/AwardProgressPanel.vue'
@@ -278,6 +279,7 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
       <div class="page-content">
         <van-tabs v-model:active="activeView" sticky :offset-top="46">
           <van-tab title="Statistics">
+            <MwisTicker />
             <SpotsAlertsPanel />
             <div class="statistics-container">
               <RecentActivationsPanel />
