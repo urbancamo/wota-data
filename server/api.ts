@@ -1778,7 +1778,7 @@ app.get('/data/api/league-tables', requireAuth, async (req, res) => {
       GROUP BY activatedby
       HAVING COUNT(DISTINCT wotaid) > 0
       ORDER BY points DESC
-      LIMIT 20
+      LIMIT 10
     `
 
     // Top Fell Chasers: Count unique summits worked per chaser per year
@@ -1792,7 +1792,7 @@ app.get('/data/api/league-tables', requireAuth, async (req, res) => {
       GROUP BY wkdby
       HAVING COUNT(DISTINCT wotaid) > 0
       ORDER BY points DESC
-      LIMIT 20
+      LIMIT 10
     `
 
     // Top Fell Watchers: Count unique activator-summit combinations per chaser per year
@@ -1806,7 +1806,7 @@ app.get('/data/api/league-tables', requireAuth, async (req, res) => {
       GROUP BY wkdby
       HAVING COUNT(DISTINCT CONCAT(wotaid, '-', stncall)) > 0
       ORDER BY points DESC
-      LIMIT 20
+      LIMIT 10
     `
 
     // Format leaderboard with rank
