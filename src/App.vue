@@ -7,6 +7,8 @@ import ButtonBar from './components/ButtonBar.vue'
 import AdifPreviewModal from './components/AdifPreviewModal.vue'
 import ExportFilterDialog from './components/ExportFilterDialog.vue'
 import SpotsAlertsPanel from './components/SpotsAlertsPanel.vue'
+import RecentActivationsPanel from './components/RecentActivationsPanel.vue'
+import AwardProgressPanel from './components/AwardProgressPanel.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import UserStatisticsPanel from './components/UserStatisticsPanel.vue'
 import LeagueTablesPanel from './components/LeagueTablesPanel.vue'
@@ -278,10 +280,14 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
           <van-tab title="Statistics">
             <SpotsAlertsPanel />
             <div class="statistics-container">
-              <UserStatisticsPanel />
+              <RecentActivationsPanel />
+              <AwardProgressPanel />
             </div>
             <LeagueTablesPanel />
-            <StatisticsPanel />
+            <div class="statistics-container">
+              <StatisticsPanel />
+              <UserStatisticsPanel />
+            </div>
           </van-tab>
 
           <van-tab title="Activator Contacts">
