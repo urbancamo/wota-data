@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AdifPreviewModal: typeof import('./src/components/AdifPreviewModal.vue')['default']
     AuthGuard: typeof import('./src/components/AuthGuard.vue')['default']
+    AwardProgressPanel: typeof import('./src/components/AwardProgressPanel.vue')['default']
     ButtonBar: typeof import('./src/components/ButtonBar.vue')['default']
     ChallengeView: typeof import('./src/components/ChallengeView.vue')['default']
     ChaserAdifPreviewModal: typeof import('./src/components/ChaserAdifPreviewModal.vue')['default']
@@ -22,6 +23,8 @@ declare module 'vue' {
     LoginForm: typeof import('./src/components/LoginForm.vue')['default']
     LogoutButton: typeof import('./src/components/LogoutButton.vue')['default']
     LogsView: typeof import('./src/components/LogsView.vue')['default']
+    RecentActivationsPanel: typeof import('./src/components/RecentActivationsPanel.vue')['default']
+    SpotsAlertsPanel: typeof import('./src/components/SpotsAlertsPanel.vue')['default']
     StatisticsPanel: typeof import('./src/components/StatisticsPanel.vue')['default']
     SummitsView: typeof import('./src/components/SummitsView.vue')['default']
     UserStatisticsPanel: typeof import('./src/components/UserStatisticsPanel.vue')['default']

@@ -65,16 +65,18 @@ export class SpotCache {
         })
 
         if (recentSpots.length > 0) {
-          // Get summit info for each spot
-          const spotsWithSummits = await Promise.all(
-            recentSpots.map(async (spot) => {
-              const summit = await prisma.summit.findUnique({
-                where: { wotaid: spot.wotaid },
-                select: { reference: true, name: true }
-              })
-              return { ...spot, summit }
-            })
-          )
+          // Batch fetch all summit info in a single query
+          const wotaIds = [...new Set(recentSpots.map(s => s.wotaid))]
+          const summits = await prisma.summit.findMany({
+            where: { wotaid: { in: wotaIds } },
+            select: { wotaid: true, reference: true, name: true }
+          })
+          const summitMap = new Map(summits.map(s => [s.wotaid, { reference: s.reference, name: s.name }]))
+
+          const spotsWithSummits = recentSpots.map(spot => ({
+            ...spot,
+            summit: summitMap.get(spot.wotaid) || null
+          }))
 
           // Store in chronological order (oldest first)
           this.spots = spotsWithSummits.reverse()
@@ -155,16 +157,18 @@ export class SpotCache {
 
         if (spots.length === 0) return []
 
-        // Get summit info for each spot
-        return Promise.all(
-          spots.map(async (spot) => {
-            const summit = await prisma.summit.findUnique({
-              where: { wotaid: spot.wotaid },
-              select: { reference: true, name: true }
-            })
-            return { ...spot, summit }
-          })
-        )
+        // Batch fetch all summit info in a single query
+        const wotaIds = [...new Set(spots.map(s => s.wotaid))]
+        const summits = await prisma.summit.findMany({
+          where: { wotaid: { in: wotaIds } },
+          select: { wotaid: true, reference: true, name: true }
+        })
+        const summitMap = new Map(summits.map(s => [s.wotaid, { reference: s.reference, name: s.name }]))
+
+        return spots.map(spot => ({
+          ...spot,
+          summit: summitMap.get(spot.wotaid) || null
+        }))
       }, 'pollForNewSpots')
 
       // Mark as successfully loaded even if no new spots (DB connection worked)

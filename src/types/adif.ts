@@ -103,6 +103,30 @@ export interface Summit {
   gridid?: string | null
 }
 
+export interface SpotWithSummit {
+  id: number
+  datetime: string
+  call: string
+  wotaid: number
+  freqmode: string
+  comment: string
+  spotter: string
+  summitName: string | null
+  sotaid: number | null
+}
+
+export interface AlertWithSummit {
+  id: number
+  datetime: string
+  call: string
+  wotaid: number
+  freqmode: string
+  comment: string | null
+  postedby: string
+  summitName: string | null
+  sotaid: number | null
+}
+
 export interface ChaserImportRecord {
   ucall: string
   stncall: string

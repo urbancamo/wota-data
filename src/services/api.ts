@@ -1,4 +1,4 @@
-import type { DatabaseStatistics, Summit } from '../types/adif'
+import type { DatabaseStatistics, Summit, SpotWithSummit, AlertWithSummit } from '../types/adif'
 
 const API_BASE_URL = '/data/api'
 
@@ -471,6 +471,56 @@ export const apiClient = {
     }
 
     return response.json()
+  },
+
+  async getSpots(): Promise<SpotWithSummit[]> {
+    const response = await fetch(`${API_BASE_URL}/spots`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch spots')
+    }
+
+    return response.json()
+  },
+
+  async getAlerts(): Promise<AlertWithSummit[]> {
+    const response = await fetch(`${API_BASE_URL}/alerts`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch alerts')
+    }
+
+    return response.json()
+  },
+
+  async deleteSpot(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/spots/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Delete failed' }))
+      throw new Error(error.error || 'Failed to delete spot')
+    }
+  },
+
+  async deleteAlert(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/alerts/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Delete failed' }))
+      throw new Error(error.error || 'Failed to delete alert')
+    }
   },
 
   async getActivationContacts(wotaid: number, callsign: string, date: string): Promise<ActivationContact[]> {
