@@ -6,6 +6,7 @@ import LogoutButton from './components/LogoutButton.vue'
 import ButtonBar from './components/ButtonBar.vue'
 import AdifPreviewModal from './components/AdifPreviewModal.vue'
 import ExportFilterDialog from './components/ExportFilterDialog.vue'
+import SpotsAlertsPanel from './components/SpotsAlertsPanel.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import UserStatisticsPanel from './components/UserStatisticsPanel.vue'
 import LeagueTablesPanel from './components/LeagueTablesPanel.vue'
@@ -275,11 +276,12 @@ async function handleExportFilterConfirm(filters: ExportFilters) {
       <div class="page-content">
         <van-tabs v-model:active="activeView" sticky :offset-top="46">
           <van-tab title="Statistics">
+            <SpotsAlertsPanel />
             <div class="statistics-container">
-              <StatisticsPanel />
               <UserStatisticsPanel />
             </div>
             <LeagueTablesPanel />
+            <StatisticsPanel />
           </van-tab>
 
           <van-tab title="Activator Contacts">

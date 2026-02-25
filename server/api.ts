@@ -744,17 +744,61 @@ app.post('/data/api/import/chaser-adif', requireAuth, async (req, res) => {
   }
 })
 
-// Get all spots
+// Get all spots (with summit names)
 app.get('/data/api/spots', requireAuth, async (req, res) => {
   try {
     const spots = await prisma.spot.findMany({
       orderBy: { datetime: 'desc' },
       take: 50,
     })
-    res.json(spots)
+
+    // Join summit names
+    const wotaIds = [...new Set(spots.map(s => s.wotaid))]
+    const summits = wotaIds.length > 0 ? await prisma.summit.findMany({
+      where: { wotaid: { in: wotaIds } },
+      select: { wotaid: true, name: true, sotaid: true },
+    }) : []
+    const summitMap = new Map(summits.map(s => [s.wotaid, s]))
+
+    const spotsWithSummits = spots.map(spot => ({
+      ...spot,
+      summitName: summitMap.get(spot.wotaid)?.name || null,
+      sotaid: summitMap.get(spot.wotaid)?.sotaid || null,
+    }))
+
+    res.json(spotsWithSummits)
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching spots')
     res.status(500).json({ error: 'Failed to fetch spots' })
+  }
+})
+
+// Delete a spot
+app.delete('/data/api/spots/:id', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id)
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid spot ID' })
+    }
+
+    const spot = await prisma.spot.findUnique({ where: { id } })
+    if (!spot) {
+      return res.status(404).json({ error: 'Spot not found' })
+    }
+
+    // Check ownership: user's callsign must match spotter, or user must be admin
+    const userCallsign = req.session.username?.toUpperCase()
+    const isAdmin = req.session.isAdmin || false
+    if (!isAdmin && spot.spotter.trim().toUpperCase() !== userCallsign) {
+      return res.status(403).json({ error: 'You can only delete your own spots' })
+    }
+
+    await prisma.spot.delete({ where: { id } })
+    logger.info({ spotId: id, username: req.session.username }, 'Spot deleted')
+    res.json({ message: 'Spot deleted successfully' })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error deleting spot')
+    res.status(500).json({ error: 'Failed to delete spot' })
   }
 })
 
@@ -918,17 +962,61 @@ app.post('/data/api/summits/validate', async (req, res) => {
   }
 })
 
-// Get all alerts
+// Get all alerts (with summit names)
 app.get('/data/api/alerts', requireAuth, async (req, res) => {
   try {
     const alerts = await prisma.alert.findMany({
       orderBy: { datetime: 'desc' },
       take: 50,
     })
-    res.json(alerts)
+
+    // Join summit names
+    const wotaIds = [...new Set(alerts.map(a => a.wotaid))]
+    const summits = wotaIds.length > 0 ? await prisma.summit.findMany({
+      where: { wotaid: { in: wotaIds } },
+      select: { wotaid: true, name: true, sotaid: true },
+    }) : []
+    const summitMap = new Map(summits.map(s => [s.wotaid, s]))
+
+    const alertsWithSummits = alerts.map(alert => ({
+      ...alert,
+      summitName: summitMap.get(alert.wotaid)?.name || null,
+      sotaid: summitMap.get(alert.wotaid)?.sotaid || null,
+    }))
+
+    res.json(alertsWithSummits)
   } catch (error) {
     logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error fetching alerts')
     res.status(500).json({ error: 'Failed to fetch alerts' })
+  }
+})
+
+// Delete an alert
+app.delete('/data/api/alerts/:id', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id)
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid alert ID' })
+    }
+
+    const alert = await prisma.alert.findUnique({ where: { id } })
+    if (!alert) {
+      return res.status(404).json({ error: 'Alert not found' })
+    }
+
+    // Check ownership: user's callsign must match postedby, or user must be admin
+    const userCallsign = req.session.username?.toUpperCase()
+    const isAdmin = req.session.isAdmin || false
+    if (!isAdmin && alert.postedby.trim().toUpperCase() !== userCallsign) {
+      return res.status(403).json({ error: 'You can only delete your own alerts' })
+    }
+
+    await prisma.alert.delete({ where: { id } })
+    logger.info({ alertId: id, username: req.session.username }, 'Alert deleted')
+    res.json({ message: 'Alert deleted successfully' })
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error deleting alert')
+    res.status(500).json({ error: 'Failed to delete alert' })
   }
 })
 
