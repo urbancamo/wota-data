@@ -34,7 +34,18 @@ function extractFirstParagraph(text: string, heading: string): string | null {
   return contentLines.join(' ').trim() || null
 }
 
+function extractForecastDate(html: string): string | null {
+  // Look for the date in a <strong> or <b> tag following "Viewing Forecast For"
+  const match = html.match(
+    /Viewing\s+Forecast\s+For[\s\S]*?<(?:strong|b)[^>]*>\s*(\w+\s+\d+\w*\s+\w+\s+\d{4})\s*<\/(?:strong|b)>/i,
+  )
+  return match ? match[1].trim() : null
+}
+
 function parseTodayForecast(html: string): string | null {
+  // Extract forecast date before stripping HTML
+  const forecastDate = extractForecastDate(html)
+
   // Strip HTML tags to get plain text, preserving block structure as newlines
   const text = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -72,7 +83,11 @@ function parseTodayForecast(html: string): string | null {
   // Build compact ticker summary
   const parts: string[] = []
 
-  parts.push('LAKE DISTRICT MOUNTAIN WEATHER')
+  if (forecastDate) {
+    parts.push(`LAKE DISTRICT MOUNTAIN WEATHER - ${forecastDate}`)
+  } else {
+    parts.push('LAKE DISTRICT MOUNTAIN WEATHER')
+  }
 
   if (headline) {
     parts.push(headline)
