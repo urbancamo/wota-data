@@ -540,6 +540,24 @@ export const apiClient = {
     return response.json()
   },
 
+  async deleteContacts(type: 'activator' | 'chaser', ids: number[]): Promise<{ deleted: number }> {
+    const response = await fetch(`${API_BASE_URL}/contacts/delete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ type, ids }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Delete failed' }))
+      throw new Error(error.error || 'Failed to delete contacts')
+    }
+
+    return response.json()
+  },
+
   async getActivationContacts(wotaid: number, callsign: string, date: string): Promise<ActivationContact[]> {
     const params = new URLSearchParams({
       wotaid: wotaid.toString(),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { showNotify } from 'vant'
+import { showNotify, showConfirmDialog } from 'vant'
 import { apiClient } from '../services/api'
 import { formatWotaReference } from '../utils/wotaReference'
 import { useAuth } from '../composables/useAuth'
@@ -27,6 +27,73 @@ const paginationRef = ref<HTMLElement | null>(null)
 // Admin callsign search
 const adminCallsignInput = ref('')
 const activeCallsign = ref('')
+
+// Selection state for bulk actions
+const selectedIds = ref<Set<number>>(new Set())
+const selectedAction = ref('delete')
+const deleting = ref(false)
+
+const allSelected = computed(() =>
+  contacts.value.length > 0 && contacts.value.every((c: any) => selectedIds.value.has(c.id))
+)
+
+const selectedCount = computed(() => selectedIds.value.size)
+
+function toggleSelect(id: number) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  selectedIds.value = next
+}
+
+function selectAll() {
+  selectedIds.value = new Set(contacts.value.map((c: any) => c.id))
+}
+
+function selectNone() {
+  selectedIds.value = new Set()
+}
+
+async function applyAction() {
+  if (selectedIds.value.size === 0) {
+    showNotify({ type: 'warning', message: 'No contacts selected' })
+    return
+  }
+
+  if (selectedAction.value === 'delete') {
+    try {
+      await showConfirmDialog({
+        title: 'Delete Contacts',
+        message: `Are you sure you want to delete ${selectedIds.value.size} contact${selectedIds.value.size > 1 ? 's' : ''}? This action cannot be undone.`,
+        confirmButtonText: 'Delete',
+        confirmButtonColor: '#ee0a24',
+        cancelButtonText: 'Cancel',
+      })
+    } catch {
+      // User cancelled
+      return
+    }
+
+    try {
+      deleting.value = true
+      const ids = Array.from(selectedIds.value)
+      const result = await apiClient.deleteContacts(props.contactType, ids)
+      showNotify({ type: 'success', message: `${result.deleted} contact${result.deleted > 1 ? 's' : ''} deleted` })
+      selectedIds.value = new Set()
+      await loadContacts()
+    } catch (error) {
+      showNotify({
+        type: 'danger',
+        message: error instanceof Error ? error.message : 'Failed to delete contacts',
+      })
+    } finally {
+      deleting.value = false
+    }
+  }
+}
 
 // Compute dropdown options for year filter
 const yearOptions = computed(() => {
@@ -125,24 +192,28 @@ function clearCallsignSearch() {
 
 // Watch for page changes
 watch(currentPage, () => {
+  selectedIds.value = new Set()
   loadContacts()
 })
 
 // Watch for pageSize changes
 watch(pageSize, () => {
   currentPage.value = 1
+  selectedIds.value = new Set()
   loadContacts()
 })
 
 // Watch for year filter changes
 watch(selectedYear, () => {
   currentPage.value = 1
+  selectedIds.value = new Set()
   loadContacts()
 })
 
 // Watch for sort order changes
 watch(sortOrder, () => {
   currentPage.value = 1
+  selectedIds.value = new Set()
   loadContacts()
 })
 
@@ -153,6 +224,7 @@ watch(() => props.contactType, () => {
   sortOrder.value = 'desc'
   adminCallsignInput.value = ''
   activeCallsign.value = ''
+  selectedIds.value = new Set()
   loadContacts()
 })
 
@@ -238,21 +310,43 @@ defineExpose({
 
       <div v-else>
         <div class="filter-section" ref="filterSectionRef">
-          <div v-if="availableYears.length > 0" class="filter-group">
-            <div class="filter-label">Filter by Year:</div>
-            <van-dropdown-menu>
-              <van-dropdown-item v-model="selectedYear" :options="yearOptions" />
-            </van-dropdown-menu>
+          <div class="filter-row">
+            <div v-if="availableYears.length > 0" class="filter-group">
+              <div class="filter-label">Filter by Year:</div>
+              <van-dropdown-menu>
+                <van-dropdown-item v-model="selectedYear" :options="yearOptions" />
+              </van-dropdown-menu>
+            </div>
+            <div class="filter-group">
+              <div class="filter-label">Sort Order:</div>
+              <van-button
+                size="small"
+                :icon="sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'"
+                @click="toggleSortOrder"
+              >
+                {{ sortOrder === 'desc' ? 'Newest First' : 'Oldest First' }}
+              </van-button>
+            </div>
           </div>
-          <div class="filter-group">
-            <div class="filter-label">Sort Order:</div>
-            <van-button
-              size="small"
-              :icon="sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'"
-              @click="toggleSortOrder"
-            >
-              {{ sortOrder === 'desc' ? 'Newest First' : 'Oldest First' }}
-            </van-button>
+          <div class="bulk-actions-row">
+            <div class="select-buttons">
+              <van-button size="small" @click="selectAll">Select All</van-button>
+              <van-button size="small" @click="selectNone">Select None</van-button>
+            </div>
+            <div class="action-group">
+              <select v-model="selectedAction" class="action-select">
+                <option value="delete">Delete</option>
+              </select>
+              <van-button
+                size="small"
+                type="danger"
+                :disabled="selectedCount === 0 || deleting"
+                :loading="deleting"
+                @click="applyAction"
+              >
+                Apply{{ selectedCount > 0 ? ` (${selectedCount})` : '' }}
+              </van-button>
+            </div>
           </div>
         </div>
 
@@ -271,10 +365,20 @@ defineExpose({
                   <th>Mode</th>
                   <th>S2S</th>
                 </template>
+                <th class="checkbox-col">
+                  <van-checkbox
+                    :model-value="allSelected"
+                    @update:model-value="allSelected ? selectNone() : selectAll()"
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="contact in contacts" :key="contact.id">
+              <tr
+                v-for="contact in contacts"
+                :key="contact.id"
+                :class="{ 'row-selected': selectedIds.has(contact.id) }"
+              >
                 <td>{{ formatDate(contact.date) }}</td>
                 <td>{{ formatTime(contact.time) }}</td>
                 <td class="callsign">
@@ -293,6 +397,12 @@ defineExpose({
                     <span v-else>-</span>
                   </td>
                 </template>
+                <td class="checkbox-col">
+                  <van-checkbox
+                    :model-value="selectedIds.has(contact.id)"
+                    @update:model-value="toggleSelect(contact.id)"
+                  />
+                </td>
               </tr>
             </tbody>
           </table>
@@ -379,13 +489,48 @@ defineExpose({
 
 .filter-section {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 16px;
   padding: 12px 16px;
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.bulk-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #ebedf0;
+}
+
+.select-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-select {
+  padding: 4px 8px;
+  border: 1px solid #dcdee0;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  color: #323233;
 }
 
 .filter-group {
@@ -466,6 +611,19 @@ defineExpose({
   text-align: center;
 }
 
+.checkbox-col {
+  width: 40px;
+  text-align: center;
+}
+
+.row-selected {
+  background: #e8f4ff;
+}
+
+.contacts-table tbody tr.row-selected:hover {
+  background: #d6ecff;
+}
+
 .loading-container {
   text-align: center;
   padding: 40px 20px;
@@ -532,6 +690,10 @@ defineExpose({
 
   .filter-section {
     padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .filter-row {
     gap: 12px;
   }
 
@@ -539,6 +701,11 @@ defineExpose({
     width: 100%;
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .bulk-actions-row {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .filter-label {

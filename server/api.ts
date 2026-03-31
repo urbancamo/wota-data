@@ -1333,6 +1333,80 @@ app.get('/data/api/contacts/chaser', requireAuth, async (req, res) => {
   }
 })
 
+// Delete contacts (activator or chaser)
+app.post('/data/api/contacts/delete', requireAuth, async (req, res) => {
+  try {
+    const userCallsign = req.session.username
+
+    if (!userCallsign) {
+      return res.status(401).json({ error: 'User not authenticated' })
+    }
+
+    const { type, ids } = req.body
+
+    if (!type || !['activator', 'chaser'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid contact type. Must be "activator" or "chaser".' })
+    }
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'No contact IDs provided' })
+    }
+
+    // Validate all IDs are numbers
+    const numericIds = ids.map((id: any) => parseInt(id)).filter((id: number) => !isNaN(id))
+    if (numericIds.length !== ids.length) {
+      return res.status(400).json({ error: 'Invalid contact IDs' })
+    }
+
+    const isAdmin = req.session.isAdmin || false
+
+    if (type === 'activator') {
+      // Verify ownership unless admin
+      if (!isAdmin) {
+        const ownedCount = await prisma.activatorLog.count({
+          where: {
+            id: { in: numericIds },
+            activatedby: userCallsign,
+          },
+        })
+        if (ownedCount !== numericIds.length) {
+          return res.status(403).json({ error: 'You can only delete your own contacts' })
+        }
+      }
+
+      const result = await prisma.activatorLog.deleteMany({
+        where: { id: { in: numericIds } },
+      })
+
+      logger.info({ count: result.count, type, username: req.session.username }, 'Contacts deleted')
+      res.json({ deleted: result.count })
+    } else {
+      // Chaser
+      if (!isAdmin) {
+        const ownedCount = await prisma.chaserLog.count({
+          where: {
+            id: { in: numericIds },
+            wkdby: userCallsign,
+          },
+        })
+        if (ownedCount !== numericIds.length) {
+          return res.status(403).json({ error: 'You can only delete your own contacts' })
+        }
+      }
+
+      const result = await prisma.chaserLog.deleteMany({
+        where: { id: { in: numericIds } },
+      })
+
+      logger.info({ count: result.count, type, username: req.session.username }, 'Contacts deleted')
+      res.json({ deleted: result.count })
+    }
+  } catch (error) {
+    logger.error({ error, path: req.path, method: req.method, username: req.session?.username }, 'Error deleting contacts')
+    res.status(500).json({ error: 'Failed to delete contacts' })
+  }
+})
+
 // Get user-specific statistics
 app.get('/data/api/statistics/user', requireAuth, async (req, res) => {
   try {
