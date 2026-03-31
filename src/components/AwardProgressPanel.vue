@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import type { AwardProgress } from '../services/api'
+import type { AwardProgress, AwardTier } from '../services/api'
 import { apiClient } from '../services/api'
 
 const awardProgress = ref<AwardProgress[]>([])
@@ -33,18 +33,19 @@ function barWidth(worked: number, total: number): string {
   return `${Math.min((worked / total) * 100, 100)}%`
 }
 
-function tierGradient(tiers: AwardProgress['tiers']): string {
-  if (!tiers) return 'none'
+function tierGradient(tiers: AwardTier[]): string {
+  const last = tiers[tiers.length - 1]!
   const stops = tiers.map((t, i) => {
-    const start = i === 0 ? 0 : (tiers[i - 1].threshold / tiers[tiers.length - 1].threshold) * 100
-    const end = (t.threshold / tiers[tiers.length - 1].threshold) * 100
+    const start = i === 0 ? 0 : (tiers[i - 1]!.threshold / last.threshold) * 100
+    const end = (t.threshold / last.threshold) * 100
     return `${t.color} ${start}%, ${t.color} ${end}%`
   })
   return `linear-gradient(to right, ${stops.join(', ')})`
 }
 
 function tierFillColor(award: AwardProgress): string | undefined {
-  if (!award.tiers) return undefined
+  const tiers = award.tiers
+  if (!tiers) return undefined
   const tierColors = [
     'rgba(7, 193, 96, 0.4)',
     'rgba(7, 193, 96, 0.6)',
@@ -52,8 +53,8 @@ function tierFillColor(award: AwardProgress): string | undefined {
     'rgba(7, 193, 96, 1)',
   ]
   let color: string | undefined
-  for (let i = 0; i < award.tiers.length; i++) {
-    if (award.worked >= award.tiers[i].threshold) {
+  for (let i = 0; i < tiers.length; i++) {
+    if (award.worked >= tiers[i]!.threshold) {
       color = tierColors[i]
     }
   }

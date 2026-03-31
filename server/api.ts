@@ -768,14 +768,14 @@ app.get('/data/api/spots', requireAuth, async (req, res) => {
     })
 
     // Join summit names
-    const wotaIds = [...new Set(spots.map(s => s.wotaid))]
+    const wotaIds = [...new Set(spots.map((s: any) => s.wotaid))]
     const summits = wotaIds.length > 0 ? await prisma.summit.findMany({
       where: { wotaid: { in: wotaIds } },
       select: { wotaid: true, name: true, sotaid: true },
     }) : []
-    const summitMap = new Map(summits.map(s => [s.wotaid, s]))
+    const summitMap = new Map<number, { wotaid: number; name: string; sotaid: string | null }>(summits.map((s: any) => [s.wotaid, s]))
 
-    const spotsWithSummits = spots.map(spot => ({
+    const spotsWithSummits = spots.map((spot: any) => ({
       ...spot,
       summitName: summitMap.get(spot.wotaid)?.name || null,
       sotaid: summitMap.get(spot.wotaid)?.sotaid || null,
@@ -992,14 +992,14 @@ app.get('/data/api/alerts', requireAuth, async (req, res) => {
     })
 
     // Join summit names
-    const wotaIds = [...new Set(alerts.map(a => a.wotaid))]
+    const wotaIds = [...new Set(alerts.map((a: any) => a.wotaid))]
     const summits = wotaIds.length > 0 ? await prisma.summit.findMany({
       where: { wotaid: { in: wotaIds } },
       select: { wotaid: true, name: true, sotaid: true },
     }) : []
-    const summitMap = new Map(summits.map(s => [s.wotaid, s]))
+    const summitMap = new Map<number, { wotaid: number; name: string; sotaid: string | null }>(summits.map((s: any) => [s.wotaid, s]))
 
-    const alertsWithSummits = alerts.map(alert => ({
+    const alertsWithSummits = alerts.map((alert: any) => ({
       ...alert,
       summitName: summitMap.get(alert.wotaid)?.name || null,
       sotaid: summitMap.get(alert.wotaid)?.sotaid || null,
