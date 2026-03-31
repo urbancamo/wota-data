@@ -50,10 +50,10 @@ export class SotaSpotService {
 
     try {
       const sotaSpots = await fetchSotaSpots()
-      if (sotaSpots.length === 0) {
-        logger.info({ sotaSpots: 0 }, 'SOTA spot poll: no spots returned from API')
-        return
-      }
+      //if (sotaSpots.length === 0) {
+      //  logger.info({ sotaSpots: 0 }, 'SOTA spot poll: no spots returned from API')
+      //  return
+      //}
 
       // Filter to Lake District spots with WOTA mapping
       const ldSpots = filterLakeDistrictSpots(sotaSpots, this.sotaToWotaMap)
@@ -105,10 +105,10 @@ export class SotaSpotService {
         }
       }
 
-      logger.info(
-        { sotaSpots: sotaSpots.length, ldSpots: ldSpots.length, inserted: insertedCount, skippedDuplicate, skippedTracked, deleted: deletedCount },
-        'SOTA spot poll complete'
-      )
+      //logger.info(
+      //  { sotaSpots: sotaSpots.length, ldSpots: ldSpots.length, inserted: insertedCount, skippedDuplicate, skippedTracked, deleted: deletedCount },
+      //  'SOTA spot poll complete'
+      //)
     } catch (error) {
       logger.error({ error }, 'SOTA spot poll cycle failed')
     } finally {
